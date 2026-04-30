@@ -14,12 +14,12 @@ Shakedown is a Claude-Code-driven verification harness for new Apple Silicon Mac
 ### Verification machinery (generation-agnostic)
 - [[Verification/Runbook]] — phase-by-phase procedure (Pre-flight → Inventory → Battery → Variance → Thermal → Display → Manual → Diagnostics → Drain → Report)
 - [[Verification/Pass-Fail Criteria]] — concrete thresholds, parameterized by chassis class
-- [[CLAUDE]] — agent operating manual (auto-loaded by Claude Code)
+- [[AGENTS]] — agent operating manual (cross-tool convention; Claude Code reads it via the [[CLAUDE]] pointer)
 - Scripts in `Verification/scripts/`:
 	- `inventory.sh` — `system_profiler` + `sysctl` → JSON
 	- `battery.sh` — `ioreg` battery health → JSON
-	- `cpu-variance.sh` — warmup + time-capped parallel SHA-256, throughput stats → JSON
-	- `thermal-load.sh` — 10-min sustained load + `powermetrics` → JSON *(needs sudo)*
+	- `cpu-variance.sh` — burst + chassis-class-aware warmup + 5×60s timed iters, throughput stats → JSON
+	- `thermal-load.sh` — 10-min sustained load + `powermetrics`, chassis-class verdict → JSON *(needs sudo)*
 	- `display-test.sh` — fullscreen color cycle in browser for visual inspection
 
 ### Targets
@@ -27,17 +27,17 @@ Shakedown is a Claude-Code-driven verification harness for new Apple Silicon Mac
 - Current presets: `mbp-16-m5-max-64`, `mbp-14-m5-pro-24`, `macbook-air-m5-16`
 
 ### Generation calibrations
-- [[examples/m5-max-2026/README|examples/m5-max-2026/]] — M5 generation (2026) defect landscape
-	- [[examples/m5-max-2026/M5 Quality Issues|M5 Quality Issues]] — overview
+- [[examples/m5-2026/README|examples/m5-2026/]] — M5 generation (2026) defect landscape
+	- [[examples/m5-2026/M5 Quality Issues|M5 Quality Issues]] — overview
 	- Issues:
-		- [[examples/m5-max-2026/Issues/Performance Variance|Performance Variance]] ⚠️ *most critical*
-		- [[examples/m5-max-2026/Issues/Thermal Throttling|Thermal Throttling]]
-		- [[examples/m5-max-2026/Issues/Battery Defects|Battery Defects]]
-		- [[examples/m5-max-2026/Issues/Hinge & Palmrest Creak|Hinge & Palmrest Creak]]
-		- [[examples/m5-max-2026/Issues/Display|Display]]
-		- [[examples/m5-max-2026/Issues/Other Reported Issues|Other Reported Issues]]
-		- [[examples/m5-max-2026/Issues/Repairability|Repairability]] *(context, not a defect to test for)*
-	- [[examples/m5-max-2026/Sources|Sources]]
+		- [[examples/m5-2026/Issues/Performance Variance|Performance Variance]] ⚠️ *most critical*
+		- [[examples/m5-2026/Issues/Thermal Throttling|Thermal Throttling]]
+		- [[examples/m5-2026/Issues/Battery Defects|Battery Defects]]
+		- [[examples/m5-2026/Issues/Hinge & Palmrest Creak|Hinge & Palmrest Creak]]
+		- [[examples/m5-2026/Issues/Display|Display]]
+		- [[examples/m5-2026/Issues/Other Reported Issues|Other Reported Issues]]
+		- [[examples/m5-2026/Issues/Repairability|Repairability]] *(context, not a defect to test for)*
+	- [[examples/m5-2026/Sources|Sources]]
 
 ### Reports
 - [[Reports/SCHEMA|JSON report schema (v1.0)]] — canonical output format, designed for opt-in submission to a future hosted aggregator

@@ -14,7 +14,7 @@ The name is borrowed from engineering — a *shakedown run* is the first-run str
 	- *User didn't specify*: ask once — "What chip, RAM, and chassis size did you buy?" Then use those.
 	- *User says "just verify it"*: run with no assertions, report the actual unit specs.
 
-2. **Read the calibration.** If the target has `calibration_dir` (e.g. `examples/m5-max-2026`), read its `<Generation> Quality Issues.md` overview before starting. This gives you the defect landscape to cross-reference findings against.
+2. **Read the calibration.** If the target has `calibration_dir` (e.g. `examples/m5-2026`), read its `<Generation> Quality Issues.md` overview before starting. This gives you the defect landscape to cross-reference findings against.
 
 3. **Walk the runbook.** [`Verification/Runbook.md`](Verification/Runbook.md) end to end. Don't skip phases without explicit user permission. One phase at a time, surface findings as you go.
 
@@ -32,33 +32,39 @@ The name is borrowed from engineering — a *shakedown run* is the first-run str
 
 4. **Cite the calibration.** When a finding maps to a documented issue (e.g. high CPU variance → bad-batch issue), link the relevant note in the calibration's `Issues/` folder. Don't paraphrase from memory; quote the specific note.
 
-5. **Sudo once, early.** `thermal-load.sh` needs sudo for `powermetrics`. Prompt the user once at the start of Phase 5 (`sudo -v`). Don't ask again mid-run.
+5. **Pass `CHASSIS_CLASS` to the load tests.** The variance and thermal scripts both accept `CHASSIS_CLASS={fanless|active-cooled-pro|desktop}` as an env var; pull it from the target preset's `thermal_chassis_class` field and export before invoking. This sets warmup duration (Phase 4) and thermal thresholds (Phase 5). Default if unset: `active-cooled-pro`.
 
-6. **Clear PASS / FAIL.** Final line of the report and final line in chat: `RESULT: PASS` or `RESULT: FAIL — <one-line reason>`. The user is often on a clock. Don't bury the lede.
+6. **Sudo once, early.** `thermal-load.sh` needs sudo for `powermetrics`. Prompt the user once at the start of Phase 5 (`sudo -v`), and use `sudo -E ./Verification/scripts/thermal-load.sh` so the `CHASSIS_CLASS` env var crosses the privilege boundary. Don't ask for sudo again mid-run.
 
-7. **Long-running phases.** Phase 4 (~6.5 min) and Phase 5 (~10 min) are blocking. Run in foreground, stream stderr progress, parse the final JSON. Together they're ~16.5 min of continuous CPU load — past thermal saturation, which is the point.
+7. **Clear PASS / FAIL.** Final line of the report and final line in chat: `RESULT: PASS` or `RESULT: FAIL — <one-line reason>`. The user is often on a clock. Don't bury the lede.
 
-8. **No cooldown between Phase 4 and Phase 5.** Variance test ends with a hot chassis, which is the correct starting state for the sustained thermal test. Run them back-to-back.
+8. **Long-running phases.** Phase 4 (~10 min on Pro / ~6 min on Air) and Phase 5 (~10 min) are blocking. Run in foreground, stream stderr progress, parse the final JSON. Together they're ~16–20 min of continuous CPU load — well past thermal saturation, which is the point.
 
-9. **System must be quiet before Phase 4.** Background CPU activity steals P-cores from the benchmark and produces fake variance. Before launching `cpu-variance.sh`, run `uptime` and `top -l 1 -n 5 -o cpu | tail -7`. If load average is high or any non-system process is using > 5% CPU, ask the user to close it. On a fresh out-of-box unit this is automatic.
+9. **No cooldown between Phase 4 and Phase 5.** Variance test ends with a hot chassis, which is the correct starting state for the sustained thermal test. Run them back-to-back.
 
-10. **Phase 8 requires a reboot.** Apple Diagnostics needs the user to power off and hold the power button. Before the reboot, **write a partial JSON+MD report** so progress isn't lost. After reboot, the user resumes the agent (e.g. `claude continue` for Claude Code, or however your runtime resumes a session) and tells you the diagnostic result; you append it and finalize.
+10. **System must be quiet before Phase 4.** Background CPU activity steals P-cores from the benchmark and produces fake variance. Before launching `cpu-variance.sh`, run `uptime` and `top -l 1 -n 5 -o cpu | tail -7`. If load average is high or any non-system process is using > 5% CPU, ask the user to close it. On a fresh out-of-box unit this is automatic.
 
-11. **Submission-safe by default.** The JSON report has `submission_safe: true` and a hashed serial, so the user can submit it to the future aggregator without leaking PII. If you add free-form notes that might contain identifying info, set `submission_safe: false` and warn the user.
+11. **Phase 4 rerun-on-warn.** If Phase 4 lands in `warn` (single warn signal), run it once more before classifying the unit. A single warn can be store-Wi-Fi background noise; two warns is signal. Two passes after a warn = pass. Two warns or any fail = fail.
 
-## Thermal chassis class — adjust thresholds accordingly
+12. **Trust the script's data_quality field.** `thermal-load.sh` emits `data_quality: "no_samples" | "few_samples" | "ok"`. `no_samples` is automatically `verdict: "fail"` regardless of other metrics — don't override it just because no temp/freq numbers came through.
 
-If the target sets `thermal_chassis_class`:
+13. **Phase 8 requires a reboot.** Apple Diagnostics needs the user to power off and hold the power button. Before the reboot, **write a partial JSON+MD report** so progress isn't lost. After reboot, the user resumes the agent (e.g. `claude continue` for Claude Code, or however your runtime resumes a session) and tells you the diagnostic result; you append it and finalize.
 
-- **`fanless`** (MacBook Air): expect aggressive throttling under sustained load by design. Steady-state-vs-peak < 50% is normal. Don't fail Phase 5 on throttle alone.
-- **`active-cooled-pro`** (MacBook Pro 14"/16"): apply the standard thresholds in [Pass-Fail Criteria](Verification/Pass-Fail%20Criteria.md).
-- **`desktop`** (Mac mini / Studio / iMac): apply the strictest thresholds. Throttling on a desktop is a real defect.
+14. **Submission-safe by default.** The JSON report has `submission_safe: true` and a hashed serial, so the user can submit it to the future aggregator without leaking PII. If you add free-form notes that might contain identifying info, set `submission_safe: false` and warn the user.
 
-If `thermal_chassis_class` isn't set, default to `active-cooled-pro` thresholds.
+## Thermal chassis class — what each setting does
+
+Set on the target via `thermal_chassis_class`. Pass through to scripts as `CHASSIS_CLASS` env var.
+
+- **`fanless`** (MacBook Air): expect aggressive throttling under sustained load by design. `cpu-variance.sh` uses 60s warmup. `thermal-load.sh` thresholds: steady-state ≥ 50% of peak (don't fail on throttle alone), no fan-ramp expectation.
+- **`active-cooled-pro`** (MacBook Pro 14"/16"): standard thresholds. `cpu-variance.sh` uses 300s warmup (16" saturation is 5–8 min). `thermal-load.sh` thresholds: steady-state ≥ 70% of peak, fan ramp expected.
+- **`desktop`** (Mac mini / Studio / iMac): strictest. `cpu-variance.sh` uses 180s warmup. `thermal-load.sh` thresholds: steady-state ≥ 90% of peak. Throttling on a desktop is a real defect.
+
+If `thermal_chassis_class` isn't set, default to `active-cooled-pro`. Full threshold tables live in [Pass-Fail Criteria](Verification/Pass-Fail%20Criteria.md).
 
 ## Background reading
 
-- [`examples/m5-max-2026/M5 Quality Issues.md`](examples/m5-max-2026/M5%20Quality%20Issues.md) — example calibration / defect landscape for the 2026 M5 generation
+- [`examples/m5-2026/M5 Quality Issues.md`](examples/m5-2026/M5%20Quality%20Issues.md) — example calibration / defect landscape for the 2026 M5 generation
 - [`Verification/Runbook.md`](Verification/Runbook.md) — the procedure
 - [`Verification/Pass-Fail Criteria.md`](Verification/Pass-Fail%20Criteria.md) — thresholds
 - [`Reports/SCHEMA.md`](Reports/SCHEMA.md) — JSON report schema

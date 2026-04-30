@@ -19,7 +19,7 @@ Every QA run produces two artifacts in `Reports/`:
     "chip_pattern": "M5 Max",
     "memory_gb": 64,
     "model_must_include": "16",
-    "calibration_dir": "examples/m5-max-2026",
+    "calibration_dir": "examples/m5-2026",
     "thermal_chassis_class": "active-cooled-pro"
   },
 

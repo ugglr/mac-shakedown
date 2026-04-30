@@ -29,7 +29,7 @@ Hard to fully verify in 30 minutes because real-world battery is a multi-hour te
 3. **Designed vs. current capacity** — should match exactly on a new unit.
 	`ioreg -l -w 0 | grep -i "DesignCapacity\|MaxCapacity"`
 
-4. **Idle drain test (~30 min)** — display sleep, no apps running, measure delta. Charge to 100%, unplug, leave for 30 min, check %. > 2-3% drop in 30 min idle is suspect.
+4. **Idle drain test (~30 min)** — display sleep, no apps running, measure delta. Charge to 100%, unplug, leave for 30 min, check %. The harness flags > 5% drain as warn and > 10% as fail (see [Pass-Fail Criteria](../../../Verification/Pass-Fail%20Criteria.md#optional-idle-drain)). On a known-clean unit, expect 1–3% drain over 30 min sleep — anything above ~5% is worth investigating.
 
 5. **Quick load discharge** — run the sustained CPU benchmark from the [performance test](Performance%20Variance.md) on battery and watch the drain rate. Compare to published full-load runtime.
 

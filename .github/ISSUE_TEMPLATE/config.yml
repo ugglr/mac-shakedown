@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & general discussion
+    url: https://github.com/ugglr/mac-shakedown/discussions
+    about: For questions, ideas, and anything that isn't a defect report or harness bug.

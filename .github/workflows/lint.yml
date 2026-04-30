@@ -1,0 +1,73 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    # Static checks only — scripts target macOS at runtime, but shellcheck,
+    # python ast.parse, and json.tool are all platform-agnostic.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify shellcheck is available
+        run: shellcheck --version
+
+      - name: Shellcheck verification scripts
+        # -x follows sourced files; SC1091 silenced for any source-not-found.
+        run: shellcheck -x -e SC1091 Verification/scripts/*.sh
+
+      - name: Validate target JSON files parse
+        run: |
+          for f in targets/*.json; do
+            python3 -m json.tool "$f" >/dev/null
+          done
+
+      - name: Syntax-check Python heredocs
+        # Each script may contain one or more `python3 - <<'PYEOF' … PYEOF` blocks.
+        # Extract them with awk and run ast.parse — catches Python syntax errors
+        # without executing macOS-only side effects (system_profiler, ioreg, etc.).
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          for s in Verification/scripts/*.sh; do
+            awk -v out="$tmp/$(basename "$s")" '
+              /<<'\''PYEOF'\''/ { n++; f=sprintf("%s.%d.py", out, n); inblk=1; next }
+              inblk && /^PYEOF$/ { inblk=0; next }
+              inblk { print > f }
+            ' "$s"
+          done
+          shopt -s nullglob
+          for py in "$tmp"/*.py; do
+            echo "ast.parse: $py"
+            python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$py"
+          done
+
+      - name: Verify markdown links resolve to existing files
+        # Scan README/CONTRIBUTING/AGENTS for ](relative/path) links and check
+        # each exists on disk. Skips http(s):// and #anchor-only references.
+        run: |
+          set -euo pipefail
+          rc=0
+          for md in README.md CONTRIBUTING.md AGENTS.md; do
+            [ -f "$md" ] || continue
+            # Extract the URL portion of every []() link, one per line.
+            grep -oE '\]\([^)]+\)' "$md" | sed -E 's/^\]\(([^)]+)\)$/\1/' \
+              | while IFS= read -r link; do
+                  case "$link" in
+                    http://*|https://*|mailto:*|\#*) continue ;;
+                  esac
+                  # Strip any #anchor or ?query suffix
+                  path="${link%%#*}"; path="${path%%\?*}"
+                  [ -z "$path" ] && continue
+                  if [ ! -e "$path" ]; then
+                    echo "BROKEN LINK in $md: $link" >&2
+                    exit 1
+                  fi
+                done || rc=1
+          done
+          exit $rc

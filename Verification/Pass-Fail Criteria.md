@@ -52,7 +52,7 @@ Test methodology: 90 s warmup (discarded) → 5 × 60 s timed iterations on a th
 | `early_vs_late_decline_pct` (early half mean → late half mean) | < 5% | 5–10% | > 10% |
 | Mean throughput vs. calibration baseline | within ±10% | within ±15% | > 15% |
 
-Any FAIL across these strongly suggests a batch-level defect — most commonly hot-spot throttling from uneven thermal paste application. Cite the calibration's Performance Variance note in the report (e.g. [for the M5 generation](../examples/m5-max-2026/Issues/Performance%20Variance.md)) and recommend the user not accept this unit.
+Any FAIL across these strongly suggests a batch-level defect — most commonly hot-spot throttling from uneven thermal paste application. Cite the calibration's Performance Variance note in the report (e.g. [for the M5 generation](../examples/m5-2026/Issues/Performance%20Variance.md)) and recommend the user not accept this unit.
 
 Why three metrics? They catch different failure modes:
 - `spread_pct` catches noisy, intermittent throttling (some iters fast, some slow, in any order).
@@ -128,4 +128,7 @@ Skip on desktops (no battery).
 
 | Check | Pass | Warn | Fail |
 |---|---|---|---|
-| Drain over 30 min sleep | ≤ 5% | 5–10% | > 10% |
+| Battery remaining after 30 min sleep | ≥ 95% | 90–95% | < 90% |
+| Equivalent drain | ≤ 5% | 5–10% | > 10% |
+
+Both rows describe the same threshold from different angles — `pmset -g batt` reports remaining %, while the calibration notes phrase observations as drain %. They're equivalent.

@@ -1,0 +1,195 @@
+{
+  "schema_version": "1.0",
+  "shakedown_version": "0.1.0",
+  "timestamp": "2026-04-30T14:30:00Z",
+  "illustrative": true,
+  "illustrative_note": "Hand-crafted example, not from a real Shakedown run. Numbers based on public M5 Max review data and thermal-physics assumptions.",
+
+  "target": {
+    "preset": "mbp-16-m5-max-64",
+    "name": "MacBook Pro 16-inch — M5 Max — 64 GB",
+    "chip_pattern": "M5 Max",
+    "memory_gb": 64,
+    "model_must_include": "16",
+    "calibration_dir": "examples/m5-2026",
+    "thermal_chassis_class": "active-cooled-pro"
+  },
+
+  "unit": {
+    "model": "MacBook Pro",
+    "model_identifier": "Mac17,1",
+    "chip": "Apple M5 Max",
+    "perf_cores": 12,
+    "efficiency_cores": 4,
+    "memory_gb": 64,
+    "storage_gb": 1024,
+    "macos_version": "macOS 16.3 (Tahoe)",
+    "kernel_version": "Darwin 26.3.0",
+    "serial_hash": "sha256:7c3f8a2e9d1b5f4c8e2a6b9d1e4f7c3a8b5e2f9c1a4d7b3e6f9a2c5b8d1e4f7c"
+  },
+
+  "phases": {
+    "0_preflight": {
+      "verdict": "pass",
+      "duration_s": 18,
+      "details": {
+        "load_avg_1m": 0.12,
+        "top_cpu_consumers": ["WindowServer 1.2%", "kernel_task 0.8%", "top 0.4%"],
+        "ac_power_connected": true,
+        "wifi_connected": true
+      }
+    },
+    "1_inventory": {
+      "verdict": "pass",
+      "duration_s": 1,
+      "details": {
+        "asserts": {
+          "chip_pattern_matched": true,
+          "memory_gb_matched": true,
+          "model_must_include_matched": true,
+          "ssd_smart": "Verified"
+        }
+      }
+    },
+    "2_battery": {
+      "verdict": "pass",
+      "duration_s": 1,
+      "details": {
+        "cycle_count": 1,
+        "condition": "Normal",
+        "max_capacity_pct": 100.0,
+        "design_capacity_mah": 8694,
+        "max_capacity_mah": 8694,
+        "external_connected": true,
+        "is_charging": false,
+        "fully_charged": true
+      }
+    },
+    "3_sensors": {
+      "verdict": "pass",
+      "duration_s": 0,
+      "details": {
+        "expected_present": [
+          "FaceTime HD Camera",
+          "Built-in Microphone (3-mic array)",
+          "Built-in Speakers",
+          "Wi-Fi 7 module",
+          "Bluetooth 5.3",
+          "Touch ID",
+          "Thunderbolt 5 × 3",
+          "HDMI",
+          "SDXC",
+          "MagSafe 3"
+        ],
+        "missing": []
+      }
+    },
+    "4_cpu_variance": {
+      "verdict": "pass",
+      "duration_s": 605,
+      "details": {
+        "chassis_class": "active-cooled-pro",
+        "burst_sec": 5,
+        "warmup_sec": 300,
+        "iterations": 5,
+        "seconds_per_iter": 60,
+        "workers": 12,
+        "burst_throughput_mb_per_s": 28640.2,
+        "warmup_tail_throughput_mb_per_s": 23110.5,
+        "throughput_mb_per_s": [23080.3, 23142.1, 23071.9, 23105.4, 23048.7],
+        "min_mb_per_s": 23048.7,
+        "max_mb_per_s": 23142.1,
+        "mean_mb_per_s": 23089.7,
+        "stdev_mb_per_s": 36.4,
+        "spread_pct": 0.405,
+        "max_to_min_ratio": 1.004,
+        "early_vs_late_decline_pct": 0.213,
+        "burst_to_steady_ratio": 0.806,
+        "verdict_reasons": [
+          "spread 0.41%, ratio 1.00×, decline 0.21% — within healthy range"
+        ]
+      }
+    },
+    "5_thermal_load": {
+      "verdict": "pass",
+      "duration_s": 600,
+      "details": {
+        "chassis_class": "active-cooled-pro",
+        "sample_interval_s": 5,
+        "workers": 12,
+        "samples_captured": 120,
+        "data_quality": "ok",
+        "data_quality_notes": [],
+        "powermetrics_rc": 0,
+        "cpu_die_temp_c": {"n": 120, "min": 64.2, "max": 94.8, "mean": 89.3, "first": 64.2, "last": 91.7},
+        "gpu_die_temp_c": {"n": 120, "min": 38.1, "max": 52.4, "mean": 47.8, "first": 38.1, "last": 49.6},
+        "fan_rpm_avg":    {"n": 120, "min": 1840.0, "max": 5840.0, "mean": 5510.3, "first": 1840.0, "last": 5780.5},
+        "p_cluster_freq_mhz": {"n": 120, "min": 3540, "max": 4280, "mean": 3892, "first": 4280, "last": 3580},
+        "combined_power_w": {"n": 120, "min": 8.4, "max": 64.2, "mean": 58.7, "first": 8.4, "last": 60.3},
+        "frequency_cliff_pct": 8.1,
+        "steady_state_vs_peak_pct": 84.3,
+        "verdict_reasons": [
+          "all thresholds passed (active-cooled-pro)"
+        ]
+      }
+    },
+    "6_display": {
+      "verdict": "pass",
+      "duration_s": 95,
+      "details": {
+        "manual_responses": {
+          "white_field": "ok — uniform, no patches, no dead pixels",
+          "red_field": "ok",
+          "green_field": "ok",
+          "blue_field": "ok",
+          "gray_50_field": "ok — local-dimming structure visible (normal mini-LED)",
+          "black_field_dim_ambient": "ok — minor IPS glow at corners, no static bleed"
+        }
+      }
+    },
+    "7_physical": {
+      "verdict": "pass",
+      "duration_s": 312,
+      "details": {
+        "manual_responses": {
+          "hinge_creak_open_close_press_twist": false,
+          "every_keyboard_key_responsive": true,
+          "trackpad_force_click_all_corners": true,
+          "touch_id_enrollment": true,
+          "speakers_clean_at_70_pct_with_bass": true,
+          "microphone_quicktime_test": true,
+          "camera_photobooth_clean": true,
+          "all_thunderbolt_ports_charge_and_data": true,
+          "magsafe_engages_disengages_cleanly": true,
+          "hdmi_test": "skipped — no cable available",
+          "sdxc_test": "skipped — no card available",
+          "bluetooth_pair_test": true
+        }
+      }
+    },
+    "8_apple_diagnostics": {
+      "verdict": "pass",
+      "duration_s": 420,
+      "details": {
+        "code": "no_issues_found"
+      }
+    },
+    "9_idle_drain": {
+      "verdict": "pass",
+      "duration_s": 1800,
+      "details": {
+        "battery_pct_start": 100,
+        "battery_pct_end": 98,
+        "drain_pct_30min": 2,
+        "battery_remaining_pct": 98
+      }
+    }
+  },
+
+  "result": "PASS",
+  "result_reason": "all phases passed; no defect signatures detected",
+
+  "submission_safe": true,
+  "store_location": null,
+  "purchase_date": null
+}

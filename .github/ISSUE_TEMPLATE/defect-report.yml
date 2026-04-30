@@ -1,0 +1,96 @@
+name: Defect report
+description: Share a defect Shakedown found on your Mac
+title: "Defect report — [chip/model]"
+labels: ["defect-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing. These reports help calibrate thresholds for everyone running Shakedown on the same generation.
+
+        **Before submitting:** open the JSON report and confirm `submission_safe: true`, `store_location: null`, and `purchase_date: null` (unless you've intentionally opted in). See [`Reports/SCHEMA.md`](../blob/main/Reports/SCHEMA.md#privacy--submission-safety).
+
+  - type: input
+    id: model
+    attributes:
+      label: Mac model + chip variant
+      description: e.g. "MacBook Pro 16" M5 Max 64 GB"
+      placeholder: MacBook Pro 16" M5 Max 64 GB
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 16.3 (Tahoe)
+    validations:
+      required: true
+
+  - type: input
+    id: target
+    attributes:
+      label: Target preset / calibration used
+      description: Preset name from `targets/` or "none"
+      placeholder: mbp-16-m5-max-64
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Which phase failed
+      options:
+        - "0 — Pre-flight"
+        - "1 — Inventory"
+        - "2 — Battery"
+        - "3 — Sensors"
+        - "4 — CPU variance"
+        - "5 — Thermal load"
+        - "6 — Display"
+        - "7 — Physical inspection"
+        - "8 — Apple Diagnostics"
+        - "9 — Idle drain"
+        - Multiple
+    validations:
+      required: true
+
+  - type: textarea
+    id: verdict-reasons
+    attributes:
+      label: verdict_reasons from the JSON report
+      description: Paste the relevant `verdict` / `result_reason` / `details` block(s).
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Attach the JSON report
+      description: Drag-and-drop `Reports/<timestamp>.json` into this box (GitHub will upload it).
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Context that might matter — store, ambient temp, repro pattern, etc.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: pii-check
+    attributes:
+      label: PII review
+      description: Confirm before submitting.
+      options:
+        - label: "`submission_safe: true` in the JSON"
+          required: true
+        - label: "`store_location` and `purchase_date` are `null` (or I've intentionally opted in)"
+          required: true
+        - label: Serial number is hashed (`serial_hash`), not raw
+          required: true
+        - label: Free-form notes contain no identifying info
+          required: true

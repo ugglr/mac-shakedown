@@ -1,0 +1,62 @@
+name: Bug report
+description: Something is broken in the Shakedown harness itself (script crashed, parse failure, etc.)
+title: "Bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for bugs in Shakedown itself. If you're reporting a defect Shakedown *found on your Mac*, use the **Defect report** template instead.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which script / phase
+      options:
+        - inventory.sh
+        - battery.sh
+        - cpu-variance.sh
+        - thermal-load.sh
+        - display-test.sh
+        - Runbook / agent flow
+        - Target preset loading
+        - Report rendering (JSON/MD)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Error output / unexpected behavior
+      description: Paste the full error or describe what went wrong.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: macos-chip
+    attributes:
+      label: macOS version + chip
+      placeholder: macOS 16.3 (Tahoe), Apple M5 Max
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: Steps to trigger the bug.
+      placeholder: |
+        1. Run `./Verification/scripts/cpu-variance.sh`
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Attach logs
+      description: Drag-and-drop any relevant logs / partial JSON output here.
+    validations:
+      required: false

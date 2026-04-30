@@ -10,26 +10,36 @@ The agent runs a sequence of deterministic shell scripts (system inventory, batt
 
 ## Why this exists
 
-Some Mac generations ship with batch-level defects that don't show up in a quick boot test. The [2026 M5 Max line](examples/m5-max-2026/M5%20Quality%20Issues.md), for example, had units showing up to **41.5% multi-core performance variance** between identical benchmark runs — a defect you can only see by running repeated load tests on a thermally-saturated chassis. A 30-second smoke test on store Wi-Fi will not catch it.
+Some Mac generations ship with batch-level defects that don't show up in a quick boot test. The [2026 M5 Max line](examples/m5-2026/M5%20Quality%20Issues.md), for example, had units showing up to **41.5% multi-core performance variance** between identical benchmark runs — a defect you can only see by running repeated load tests on a thermally-saturated chassis. A 30-second smoke test on store Wi-Fi will not catch it.
 
 Shakedown is the procedure for catching those.
+
+> **Status (v0.1):** the methodology has not yet been validated against a confirmed-defective unit — thresholds are derived from public reports and engineering reasoning. Expect them to tighten as crowd-sourced submissions land. Treat current results as advisory, not authoritative; if a verdict is borderline, rerun before deciding.
 
 ## Quick start
 
 On the new Mac, with [Claude Code](https://docs.claude.com/claude-code) (the recommended runtime — see [Supported agents](#supported-agents) for alternatives):
 
-```bash
-xcode-select -p >/dev/null 2>&1 || xcode-select --install
-# wait for Command Line Tools to install (5–10 min, GUI prompt), then:
+1. **Install Xcode Command Line Tools** (provides `git`). 5–10 min, one-time. A GUI dialog will pop up:
 
-# Install Claude Code — see https://docs.claude.com/claude-code for current method
-npm install -g @anthropic-ai/claude-code
+	```bash
+	xcode-select -p >/dev/null 2>&1 || xcode-select --install
+	```
 
-git clone https://github.com/ugglr/mac-shakedown ~/mac-shakedown && cd ~/mac-shakedown
-claude "run the QA against target mbp-16-m5-max-64"
-```
+2. **Install Claude Code.** See [docs.claude.com/claude-code](https://docs.claude.com/claude-code) for the current install method:
 
-The agent walks the [runbook](Verification/Runbook.md) end to end (~40 min, plus an optional 30 min idle-drain test). Outputs `Reports/<timestamp>.json` and `Reports/<timestamp>.md`.
+	```bash
+	npm install -g @anthropic-ai/claude-code
+	```
+
+3. **Clone and run.**
+
+	```bash
+	git clone https://github.com/ugglr/mac-shakedown ~/mac-shakedown && cd ~/mac-shakedown
+	claude "run the QA against target mbp-16-m5-max-64"
+	```
+
+The agent walks the [runbook](Verification/Runbook.md) end to end (~45 min on a MacBook Pro, ~25 min on a fanless MacBook Air, plus an optional 30 min idle-drain test). Outputs `Reports/<timestamp>.json` and `Reports/<timestamp>.md`.
 
 > Keep the charger plugged in for all phases except the optional idle-drain test (Phase 9).
 
@@ -37,16 +47,22 @@ The agent walks the [runbook](Verification/Runbook.md) end to end (~40 min, plus
 
 Shakedown's agent instructions live in [`AGENTS.md`](AGENTS.md), following the cross-tool convention so any sufficiently capable agent can run it. The harness needs an agent that can: run shell commands, read files, ask the user yes/no questions, and sit through ~16 minutes of blocking benchmarks.
 
-| Agent | Notes |
-|---|---|
-| **Claude Code** *(recommended)* | Reference runtime. `CLAUDE.md` points at `AGENTS.md` so it auto-loads. Use the [Quick start](#quick-start) above. |
-| Cursor | In Composer / Agent mode, attach `AGENTS.md` to the prompt: *"Follow AGENTS.md and run the QA against target mbp-16-m5-max-64."* |
-| Cline / Roo Code | Point at `AGENTS.md` in the system prompt. Same invocation as Cursor. |
-| Aider | `aider --read AGENTS.md` then ask it to run the QA. |
-| OpenAI Codex CLI | Recognizes `AGENTS.md` natively. Just `codex "run the QA against target mbp-16-m5-max-64"`. |
-| Other | Anything that can run a shell + read files + chat with the user. Tell it: *"Read `AGENTS.md`. Run the QA against my Mac per the procedure described there."* |
+| Agent | Status | Notes |
+|---|---|---|
+| **Claude Code** | ✅ reference runtime | `CLAUDE.md` points at `AGENTS.md` so it auto-loads. Use the [Quick start](#quick-start) above. |
+| Cursor | 🟡 unverified — should work | In Composer / Agent mode, attach `AGENTS.md` to the prompt: *"Follow AGENTS.md and run the QA against target mbp-16-m5-max-64."* |
+| Cline / Roo Code | 🟡 unverified — should work | Point at `AGENTS.md` in the system prompt. Same invocation as Cursor. |
+| Aider | 🟡 unverified — should work | `aider --read AGENTS.md` then ask it to run the QA. |
+| OpenAI Codex CLI | 🟡 unverified — should work | Recognizes `AGENTS.md` natively. Just `codex "run the QA against target mbp-16-m5-max-64"`. |
+| Other | — | Anything that can run a shell + read files + chat with the user. Tell it: *"Read `AGENTS.md`. Run the QA against my Mac per the procedure described there."* |
+
+If you've run Shakedown end-to-end with a non-Claude-Code agent, please open a PR updating the table to ✅. If you hit friction, open an issue with the agent name and what tripped — happy to clarify the runbook for any compatible runtime.
 
 **No agent at all?** The scripts run standalone — no LLM required. Read [`Verification/Runbook.md`](Verification/Runbook.md), execute the scripts in order, answer the manual-check questions to yourself, and write the report by hand. The agent flow is convenience, not a hard dependency.
+
+## What a run looks like
+
+See [`examples/sample-report-illustrative/`](examples/sample-report-illustrative/) for an annotated example PASS report on a 16" M5 Max — Markdown render and the underlying JSON. (Illustrative — not a real run; replaced when crowd-sourced submissions land.)
 
 ## What gets checked
 
@@ -56,8 +72,8 @@ Shakedown's agent instructions live in [`AGENTS.md`](AGENTS.md), following the c
 | 1 | Hardware identity vs. target | `system_profiler` + `sysctl` → `inventory.sh` |
 | 2 | Battery health (cycles, capacity, condition) | `ioreg AppleSmartBattery` → `battery.sh` |
 | 3 | Sensor & port inventory | (uses Phase 1 output) |
-| 4 | **CPU performance variance** | 90 s warmup + 5 × 60 s timed iterations, parallel SHA-256 → `cpu-variance.sh` |
-| 5 | Sustained thermal load | 10 min continuous + `powermetrics` sampling → `thermal-load.sh` |
+| 4 | **CPU performance variance** | 5 s burst + chassis-class-aware warmup (300 s on Pro, 60 s on Air) + 5 × 60 s timed iterations, parallel SHA-256 → `cpu-variance.sh` |
+| 5 | Sustained thermal load (chassis-class-aware thresholds) | 10 min continuous + `powermetrics` sampling → `thermal-load.sh` |
 | 6 | Display visual inspection | fullscreen color cycle in Safari → `display-test.sh` |
 | 7 | Manual physical inspection | agent prompts: hinge, keyboard, speakers, ports, Touch ID, etc. |
 | 8 | Apple Diagnostics | reboot + Cmd-D |
@@ -91,19 +107,23 @@ Three ways:
 ## Repo layout
 
 ```
-shakedown/
+mac-shakedown/
 ├── README.md
-├── CLAUDE.md                       # agent operating manual (auto-loaded)
+├── AGENTS.md                       # agent operating manual (cross-tool convention)
+├── CLAUDE.md                       # one-line pointer at AGENTS.md (Claude Code auto-loader)
 ├── CONTRIBUTING.md
+├── CHANGELOG.md
+├── SECURITY.md
 ├── LICENSE
 ├── Shakedown Brain.md              # Obsidian map-of-content (optional, for vault users)
+├── .github/                        # issue + PR templates, CI lint workflow
 ├── Verification/                   # generation-agnostic test machinery
 │   ├── Runbook.md                  # the procedure
-│   ├── Pass-Fail Criteria.md       # thresholds
+│   ├── Pass-Fail Criteria.md       # thresholds (parameterized by chassis class)
 │   └── scripts/
 │       ├── inventory.sh            # system_profiler + sysctl → JSON
 │       ├── battery.sh              # ioreg battery health → JSON
-│       ├── cpu-variance.sh         # parallel-hash, time-capped iters → JSON
+│       ├── cpu-variance.sh         # burst + warmup + 5×60s timed iters → JSON
 │       ├── thermal-load.sh         # 10-min sustained + powermetrics → JSON (sudo)
 │       └── display-test.sh         # fullscreen color cycle (HTML)
 ├── targets/                        # preset SKU configs
@@ -111,19 +131,20 @@ shakedown/
 │   ├── mbp-16-m5-max-64.json
 │   ├── mbp-14-m5-pro-24.json
 │   └── macbook-air-m5-16.json
-├── examples/                       # generation-specific calibrations
-│   └── m5-max-2026/                # known issues, sources, thresholds for 2026 M5 generation
-│       ├── README.md
-│       ├── M5 Quality Issues.md
-│       ├── Issues/
-│       └── Sources.md
+├── examples/                       # generation-specific calibrations + sample reports
+│   ├── m5-2026/                    # the 2026 M5 generation defect landscape
+│   │   ├── README.md
+│   │   ├── M5 Quality Issues.md
+│   │   ├── Issues/
+│   │   └── Sources.md
+│   └── sample-report-illustrative/ # what a real run looks like (illustrative, not from a real unit)
 └── Reports/                        # output artifacts (gitignored)
     └── SCHEMA.md                   # JSON report schema (v1.0)
 ```
 
 ## Adding a new generation
 
-When a new chip line ships, copy `examples/m5-max-2026/` to `examples/<generation>-<year>/`, document the issues there, and add a target preset pointing to it. See [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-generation-calibration).
+When a new chip line ships, copy `examples/m5-2026/` to `examples/<generation>-<year>/`, document the issues there, and add a target preset pointing to it. See [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-generation-calibration).
 
 ## Manual usage (without Claude Code)
 
@@ -147,7 +168,7 @@ Then read the values against [Pass-Fail Criteria](Verification/Pass-Fail%20Crite
 
 ## Origin
 
-Built originally to vet a 16" M5 Max purchase abroad, where returning a defective unit isn't practical. The research that informs the M5 Max thresholds is in [`examples/m5-max-2026/`](examples/m5-max-2026/) — kept as a worked example of what a generation calibration looks like.
+Built originally to vet a 16" M5 Max purchase abroad, where returning a defective unit isn't practical. The research that informs the M5 Max thresholds is in [`examples/m5-2026/`](examples/m5-2026/) — kept as a worked example of what a generation calibration looks like.
 
 ## License
 

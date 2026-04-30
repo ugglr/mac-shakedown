@@ -17,7 +17,7 @@ A target preset lets users run `claude "run QA --target <name>"` instead of typi
   "chip_pattern": "M5 Max",
   "memory_gb": 64,
   "model_must_include": "16",
-  "calibration_dir": "examples/m5-max-2026",
+  "calibration_dir": "examples/m5-2026",
   "thermal_chassis_class": "active-cooled-pro"
 }
 ```
@@ -35,7 +35,7 @@ Open a PR adding the JSON. Match an existing one for style.
 
 ## Adding a generation calibration
 
-When a new generation lands (or a new batch defect emerges in an existing one), add a folder under `examples/` with the same shape as `examples/m5-max-2026/`:
+When a new generation lands (or a new batch defect emerges in an existing one), add a folder under `examples/` with the same shape as `examples/m5-2026/`:
 
 ```
 examples/<generation>-<year>/

@@ -89,29 +89,40 @@ Then check the unit-reports lines up with the form-factor expectations:
 
 Anything advertised by Apple for that model but missing from the unit's report is a likely electrical / firmware issue. Surface to user.
 
-## Phase 4 — CPU performance variance test (~6.5 min)
+## Phase 4 — CPU performance variance test (~10 min on Pro, ~6 min on Air)
 
-**Goal:** detect batch-level performance variance / hot-spot throttling. **The headline test.** See the calibration's relevant note (e.g. [Performance Variance](../examples/m5-max-2026/Issues/Performance%20Variance.md) for the M5 Max generation) for the documented defect this test catches.
+**Goal:** detect batch-level performance variance / hot-spot throttling. **The headline test.** See the calibration's relevant note (e.g. [Performance Variance](../examples/m5-2026/Issues/Performance%20Variance.md) for the M5 generation) for the documented defect this test catches.
 
 ```bash
-./Verification/scripts/cpu-variance.sh > Reports/<ts>-raw/variance.json
+CHASSIS_CLASS=active-cooled-pro \
+  ./Verification/scripts/cpu-variance.sh > Reports/<ts>-raw/variance.json
 ```
 
-Defaults:
-- **90 s warmup** of continuous load — gets the chassis to thermal equilibrium so the timed iterations all measure steady-state behavior (not the heating curve). Output is discarded.
-- **5 × 60 s timed iterations** — measure throughput (MB/s) on a saturated chassis.
-- Total: ~6.5 min. For a more thorough run: `WARMUP_SEC=120 SECONDS_PER_ITER=90 ./cpu-variance.sh` (~10 min).
+`CHASSIS_CLASS` defaults to `active-cooled-pro`. Pass `fanless` (MacBook Air) or `desktop` (Mac mini / Studio / iMac) to adjust warmup duration.
 
-Why the warmup matters: on a cold chassis, iteration 1 is necessarily faster than iteration 5 just because thermal mass is filling up — even a healthy unit. Warmup puts every iteration on the same thermal footing so the variance metric measures *unit defect*, not test artifact.
+The test has three phases internal to the script:
+
+1. **5 s burst** of cold-start parallel SHA-256 — captures peak boost throughput before the chassis heats up. Recorded as `burst_throughput_mb_per_s`.
+2. **Warmup** of continuous load — drives the chassis to thermal equilibrium so the timed iterations all measure steady-state behavior. Default depends on chassis:
+	- `active-cooled-pro`: 300 s (16" MBP saturation is 5–8 min; 90 s would leave iteration 1 still riding the heating curve)
+	- `fanless`: 60 s
+	- `desktop`: 180 s
+3. **5 × 60 s timed iterations** — measure throughput (MB/s) on the saturated chassis.
+
+Total: ~10 min on Pro, ~6 min on Air, ~8 min on desktop. For a more thorough run:
+`WARMUP_SEC=420 SECONDS_PER_ITER=90 ITERATIONS=5 ./Verification/scripts/cpu-variance.sh` (~15 min).
+
+Why the long warmup matters: on a cold chassis, iteration 1 is necessarily faster than iteration 5 just because thermal mass is filling up — even a healthy unit. Warmup puts every iteration on the same thermal footing so the variance metrics measure *unit defect*, not test artifact.
 
 Check from the JSON:
 - `spread_pct` ((max − min) / mean × 100) — pass < 5%, warn 5–10%, fail > 10%
-- `max_to_min_ratio` — fail at ≥ 1.4× (catches single-iteration cliffs)
-- `early_vs_late_decline_pct` — fail > 10% (specific signature of a hot spot reaching threshold mid-test that the spread metric can miss if decline is monotonic)
+- `max_to_min_ratio` — pass < 1.2×, warn 1.2–1.4×, fail ≥ 1.4× (catches single-iteration cliffs)
+- `early_vs_late_decline_pct` — pass < 5%, warn 5–10%, fail > 10% (signature of a hot spot reaching threshold mid-test, which `spread_pct` can miss if decline is monotonic)
+- `burst_to_steady_ratio` — advisory; > 0.97 raises a warn ("steady matches burst — possibly always-throttled"). Use the calibration's typical burst figure to interpret in absolute terms.
 
-A unit with > 10% spread or > 10% decline is **highly suspect** for a batch-level defect. Cross-reference the calibration's Performance Variance note in the report and recommend the user not accept this unit.
+Any FAIL is **strongly suggestive of a batch-level defect**. Cross-reference the calibration's Performance Variance note in the report and recommend the user not accept this unit. If a single result lands in WARN, **rerun the phase once** before deciding — a single warn could be store-Wi-Fi background noise; two warns is signal.
 
-> No cooldown to Phase 5. The chassis ends Phase 4 hot — that's preferable for the thermal load test. Move directly into Phase 5.
+> No cooldown to Phase 5. The chassis ends Phase 4 hot — that's the right starting state for the sustained thermal test. Move directly into Phase 5.
 
 ## Phase 5 — Sustained thermal load (~10 min)
 
@@ -123,19 +134,21 @@ Requires sudo for `powermetrics`. Prompt for sudo once:
 
 ```bash
 sudo -v
-sudo ./Verification/scripts/thermal-load.sh > Reports/<ts>-raw/thermal.json
+CHASSIS_CLASS=active-cooled-pro \
+  sudo -E ./Verification/scripts/thermal-load.sh > Reports/<ts>-raw/thermal.json
 ```
 
-Default: 10 minutes of continuous parallel hashing, with `powermetrics` sampling every 5 s (`smc` and `cpu_power` samplers).
+`CHASSIS_CLASS` selects the threshold table (matches the same env var as Phase 4). Default: `active-cooled-pro`. Use `sudo -E` so the chassis class env var crosses the privilege boundary.
+
+Default: 10 minutes of continuous parallel hashing, with `powermetrics` sampling every 5 s (`smc` and `cpu_power` samplers). The script writes its own verdict per the chassis-class table in `thermal-load.sh` (mirrors [Pass-Fail Criteria](Pass-Fail%20Criteria.md)).
+
+The script's `data_quality` field is the safety net: `no_samples` (sudo failed, format change, etc.) forces a `fail` verdict regardless of other metrics — so a misconfigured run can't false-pass.
 
 Check from the JSON:
-- `cpu_die_temp_c.max` reasonable for the chassis class (active-cooled-pro: < 105°C; fanless: temps up to ~100°C are normal)
-- No frequency cliff > 30% mid-run
-- Steady-state P-core freq vs. peak — depends on `thermal_chassis_class`:
-	- `active-cooled-pro`: ≥ 70%
-	- `fanless`: ≥ 50% (Air throttles by design)
-	- `desktop`: ≥ 90%
-- Fan ramps under load — confirms cooling is engaging (skip for `fanless`)
+- `data_quality` == "ok" (or "few_samples" with verdict warn). `no_samples` is fatal.
+- `cpu_die_temp_c.max` within the chassis-class threshold (see [Pass-Fail Criteria](Pass-Fail%20Criteria.md))
+- `frequency_cliff_pct`, `steady_state_vs_peak_pct` against chassis-class thresholds
+- `fan_rpm_avg.max - .min` ≥ 200 RPM (skip for fanless)
 
 Frequency cliffs to base clock within 30 s under any chassis are the bad-batch / thermal-paste signature — flag against the calibration's Performance Variance note.
 
