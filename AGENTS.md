@@ -32,7 +32,7 @@ The name is borrowed from engineering — a *shakedown run* is the first-run str
 
 4. **Cite the calibration.** When a finding maps to a documented issue (e.g. high CPU variance → bad-batch issue), link the relevant note in the calibration's `Issues/` folder. Don't paraphrase from memory; quote the specific note.
 
-5. **Pass `CHASSIS_CLASS` to the load tests.** The variance and thermal scripts both accept `CHASSIS_CLASS={fanless|active-cooled-pro|desktop}` as an env var; pull it from the target preset's `thermal_chassis_class` field and export before invoking. This sets warmup duration (Phase 4) and thermal thresholds (Phase 5). Default if unset: `active-cooled-pro`.
+5. **Pass `CHASSIS_CLASS` to the load tests.** The variance and thermal scripts both accept `CHASSIS_CLASS={fanless|active-cooled-pro|desktop|intel-laptop|intel-desktop}` as an env var; pull it from the target preset's `thermal_chassis_class` field and export before invoking. This sets warmup duration (Phase 4) and thermal thresholds (Phase 5). Default if unset: `active-cooled-pro`.
 
 6. **Sudo once, early.** `thermal-load.sh` needs sudo for `powermetrics`. Prompt the user once at the start of Phase 5 (`sudo -v`), and use `sudo -E ./Verification/scripts/thermal-load.sh` so the `CHASSIS_CLASS` env var crosses the privilege boundary. Don't ask for sudo again mid-run.
 
@@ -44,21 +44,36 @@ The name is borrowed from engineering — a *shakedown run* is the first-run str
 
 10. **System must be quiet before Phase 4.** Background CPU activity steals P-cores from the benchmark and produces fake variance. Before launching `cpu-variance.sh`, run `uptime` and `top -l 1 -n 5 -o cpu | tail -7`. If load average is high or any non-system process is using > 5% CPU, ask the user to close it. On a fresh out-of-box unit this is automatic.
 
-11. **Phase 4 rerun-on-warn.** If Phase 4 lands in `warn` (single warn signal), run it once more before classifying the unit. A single warn can be store-Wi-Fi background noise; two warns is signal. Two passes after a warn = pass. Two warns or any fail = fail.
+11. **Phase 4 rerun-on-warn (decision tree).** A single warn could be background noise; act on the rerun:
+	- First run `pass` → record and continue.
+	- First run `warn` → rerun once. Then:
+		- Second run `pass` → record as pass; mention the original warn in the report's notes.
+		- Second run `warn` → record as **fail** (compound evidence across runs).
+		- Second run `fail` → record as **fail**.
+	- First run `fail` → record as fail; do not rerun (a single fail is signal enough).
+	No third run. Two warns is the limit; the cost of running a third can mask thermal-paste defects that worsen with each iteration.
 
 12. **Trust the script's data_quality field.** `thermal-load.sh` emits `data_quality: "no_samples" | "few_samples" | "ok"`. `no_samples` is automatically `verdict: "fail"` regardless of other metrics — don't override it just because no temp/freq numbers came through.
 
 13. **Phase 8 requires a reboot.** Apple Diagnostics needs the user to power off and hold the power button. Before the reboot, **write a partial JSON+MD report** so progress isn't lost. After reboot, the user resumes the agent (e.g. `claude continue` for Claude Code, or however your runtime resumes a session) and tells you the diagnostic result; you append it and finalize.
 
-14. **Submission-safe by default.** The JSON report has `submission_safe: true` and a hashed serial, so the user can submit it to the future aggregator without leaking PII. If you add free-form notes that might contain identifying info, set `submission_safe: false` and warn the user.
+14. **Submission-safe by default — but verify, don't assume.** The JSON report has `submission_safe: true` and a hashed serial. Before submitting to the future aggregator, **explicitly check**:
+	- `inventory.json.summary.serial_number` is absent (only `serial_hash` is present). If `serial_number` is there, the user ran with `INCLUDE_PLAINTEXT_SERIAL=1` — set `submission_safe: false`.
+	- `battery.json.battery_serial` is absent (only `battery_serial_hash`).
+	- `_raw_*` blocks are stripped from the canonical submission JSON (they may contain paired Bluetooth IDs, Wi-Fi SSIDs, USB device serials).
+	- Free-form user notes don't contain identifying info (store name, employee name, etc.). If they do, set `submission_safe: false` and warn the user.
+
+	The hash is for **deduplication, not anonymization** — Apple's serial number space has limited entropy, so a determined aggregator could rainbow-table the original. Treat the hashing as obfuscation; treat `submission_safe: true` as "no plaintext PII," not "untraceable."
 
 ## Thermal chassis class — what each setting does
 
 Set on the target via `thermal_chassis_class`. Pass through to scripts as `CHASSIS_CLASS` env var.
 
-- **`fanless`** (MacBook Air): expect aggressive throttling under sustained load by design. `cpu-variance.sh` uses 60s warmup. `thermal-load.sh` thresholds: steady-state ≥ 50% of peak (don't fail on throttle alone), no fan-ramp expectation.
-- **`active-cooled-pro`** (MacBook Pro 14"/16"): standard thresholds. `cpu-variance.sh` uses 300s warmup (16" saturation is 5–8 min). `thermal-load.sh` thresholds: steady-state ≥ 70% of peak, fan ramp expected.
-- **`desktop`** (Mac mini / Studio / iMac): strictest. `cpu-variance.sh` uses 180s warmup. `thermal-load.sh` thresholds: steady-state ≥ 90% of peak. Throttling on a desktop is a real defect.
+- **`fanless`** (Apple Silicon MacBook Air): expect aggressive throttling under sustained load by design. `cpu-variance.sh` uses 60 s warmup. `thermal-load.sh` thresholds: steady-state ≥ 50% of peak (don't fail on throttle alone), no fan-ramp expectation.
+- **`active-cooled-pro`** (Apple Silicon MacBook Pro 14"/16"): standard thresholds. `cpu-variance.sh` uses 300 s warmup (16" saturation is 5–8 min). `thermal-load.sh` thresholds: steady-state ≥ 70% of peak, fan ramp expected.
+- **`desktop`** (Apple Silicon Mac mini / Studio / iMac): strictest. `cpu-variance.sh` uses 180 s warmup. `thermal-load.sh` thresholds: steady-state ≥ 90% of peak; on `desktop`, **fan-doesn't-engage is a fail** (not warn). Throttling on a desktop is a real defect.
+- **`intel-laptop`** (Intel MacBook Pro / Air): looser thresholds — Intel laptops throttle hard by design. 180 s warmup. Steady-state ≥ 50% of peak. `thermal-load.sh` parses Intel-format powermetrics output (per-CPU frequency, Package Power, IA Cores Power).
+- **`intel-desktop`** (Intel iMac / Mac mini): tighter than `intel-laptop` but looser than Apple Silicon `desktop`. 180 s warmup. Steady-state ≥ 75% of peak.
 
 If `thermal_chassis_class` isn't set, default to `active-cooled-pro`. Full threshold tables live in [Pass-Fail Criteria](Verification/Pass-Fail%20Criteria.md).
 

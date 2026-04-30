@@ -150,17 +150,19 @@ When a new chip line ships, copy `examples/m5-2026/` to `examples/<generation>-<
 
 ## Manual usage (without Claude Code)
 
-You can run the scripts directly:
+You can run the scripts directly. Set `CHASSIS_CLASS` to match your Mac (default is `active-cooled-pro` — fine for an Apple Silicon MBP, wrong for an Air or Intel Mac):
 
 ```bash
-./Verification/scripts/inventory.sh      > Reports/inventory.json
-./Verification/scripts/battery.sh        > Reports/battery.json
-./Verification/scripts/cpu-variance.sh   > Reports/variance.json
-sudo ./Verification/scripts/thermal-load.sh > Reports/thermal.json
+export CHASSIS_CLASS=active-cooled-pro    # or fanless | desktop | intel-laptop | intel-desktop
+
+./Verification/scripts/inventory.sh    > Reports/inventory.json
+./Verification/scripts/battery.sh      > Reports/battery.json
+./Verification/scripts/cpu-variance.sh > Reports/variance.json
+sudo -E ./Verification/scripts/thermal-load.sh > Reports/thermal.json
 ./Verification/scripts/display-test.sh
 ```
 
-Then read the values against [Pass-Fail Criteria](Verification/Pass-Fail%20Criteria.md). The agent flow is recommended though — most of the value is in the manual prompts and the cross-referencing against calibration notes.
+`sudo -E` preserves the env var across the privilege boundary (otherwise `thermal-load.sh` falls back to `active-cooled-pro` defaults). Then read the values against [Pass-Fail Criteria](Verification/Pass-Fail%20Criteria.md). The agent flow is recommended though — most of the value is in the manual prompts and the cross-referencing against calibration notes.
 
 ## Roadmap
 

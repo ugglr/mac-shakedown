@@ -124,7 +124,19 @@ Check from the JSON:
 - A dead worker (any iteration's throughput == 0) is automatically a fail.
 - The script automatically escalates **2 or more independent warn signals** to fail (compound-warn rule).
 
-Any FAIL is **strongly suggestive of a batch-level defect**. Cross-reference the calibration's Performance Variance note in the report and recommend the user not accept this unit. If a single result lands in WARN, **rerun the phase once** before deciding — a single warn could be store-Wi-Fi background noise; two warns is signal.
+Any FAIL is **strongly suggestive of a batch-level defect**. Cross-reference the calibration's Performance Variance note in the report and recommend the user not accept this unit.
+
+**Rerun-on-warn decision tree** (a single warn can be store-Wi-Fi background noise; act on the rerun):
+
+| First run | Rerun action | Second run | Final |
+|---|---|---|---|
+| pass | none | — | pass |
+| warn | rerun once | pass | pass *(note original warn in report)* |
+| warn | rerun once | warn | **fail** *(compound evidence)* |
+| warn | rerun once | fail | fail |
+| fail | none | — | fail |
+
+No third run — if two runs both warn, that's signal enough; running a third can mask thermal-paste defects that worsen with each iteration as the chassis stays saturated.
 
 > No cooldown to Phase 5. The chassis ends Phase 4 hot — that's the right starting state for the sustained thermal test. Move directly into Phase 5.
 

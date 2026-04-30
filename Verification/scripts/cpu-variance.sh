@@ -179,10 +179,15 @@ if burst_throughput and burst_throughput > 0:
     burst_to_steady_ratio = round(mean / burst_throughput, 4)
 
 # Within-iter worker imbalance — a single defective P-core would consistently
-# under-perform if the macOS scheduler happens to pin a worker to it. Report
-# the median-iter imbalance so a sudden spike is visible.
+# under-perform if the macOS scheduler happens to pin a worker to it. Healthy
+# units show < 5% median imbalance; > 10% suggests one worker (and possibly
+# one core) is consistently behind.
 median_worker_imbalance_pct = (
     round(statistics.median(worker_imbalance_pct_per_iter), 2)
+    if worker_imbalance_pct_per_iter else None
+)
+max_worker_imbalance_pct = (
+    round(max(worker_imbalance_pct_per_iter), 2)
     if worker_imbalance_pct_per_iter else None
 )
 
@@ -224,6 +229,21 @@ if burst_to_steady_ratio is not None and burst_to_steady_ratio > 0.97:
         f"headroom from cold; could indicate always-throttled unit, or just very strong cooling. "
         f"Compare against calibration baseline."
     )
+
+# Worker imbalance — partial mitigation for the no-CPU-pinning gap. macOS
+# schedules around a slow core, but if one worker is consistently 10%+ behind
+# even after that, surface it.
+if max_worker_imbalance_pct is not None:
+    if max_worker_imbalance_pct > 20:
+        fail_signals.append(
+            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}% — "
+            f"one worker consistently behind by > 20%, possible single-core defect"
+        )
+    elif max_worker_imbalance_pct > 10:
+        warn_signals.append(
+            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}% — "
+            f"one worker behind by > 10%; rerun to confirm"
+        )
 
 # Compound-warn escalation: two or more independent warns = effective fail.
 verdict = "pass"
@@ -267,6 +287,7 @@ result = {
     "burst_to_steady_ratio": burst_to_steady_ratio,
     "worker_imbalance_pct_per_iter": worker_imbalance_pct_per_iter,
     "median_worker_imbalance_pct": median_worker_imbalance_pct,
+    "max_worker_imbalance_pct": max_worker_imbalance_pct,
     "verdict": verdict,
     "verdict_reasons": reasons,
     "workload": "sha256-parallel (hardware-accelerated on Apple Silicon — see script header CAVEAT)",

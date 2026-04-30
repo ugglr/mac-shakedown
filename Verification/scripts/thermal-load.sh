@@ -8,7 +8,7 @@
 #   SAMPLE_SEC      default 5
 #   WORKERS         default = number of P-cores
 #   CHASSIS_CLASS   default active-cooled-pro
-#                   one of: fanless | active-cooled-pro | desktop
+#                   one of: fanless | active-cooled-pro | desktop | intel-laptop | intel-desktop
 #                   sets thermal pass/fail thresholds (Verification/Pass-Fail Criteria.md)
 
 set -euo pipefail
@@ -171,12 +171,14 @@ for blk in blocks:
         m = re.search(r"^\s*CPU\s+\d+\s+frequency:\s+(\d+)\s+MHz", line)
         if m: sd.setdefault("intel_cpu_freq_mhz", []).append(int(m.group(1)))
         # Intel: package and IA-cores power
-        m = re.search(r"Package Power:\s+([\d.]+)\s*mW", line)
-        if m: sd["intel_package_power_mw"] = float(m.group(1))
-        m = re.search(r"IA Cores Power:\s+([\d.]+)\s*mW", line)
-        if m: sd["intel_ia_cores_power_mw"] = float(m.group(1))
-        m = re.search(r"GT Cores Power:\s+([\d.]+)\s*mW", line)
-        if m: sd["intel_gt_cores_power_mw"] = float(m.group(1))
+        # Intel powermetrics emits power in W on most macOS versions, in mW on a few.
+        # Try both; normalize to mW internally.
+        m = re.search(r"Package Power:\s+([\d.]+)\s*(W|mW)\b", line)
+        if m: sd["intel_package_power_mw"] = float(m.group(1)) * (1000.0 if m.group(2) == "W" else 1.0)
+        m = re.search(r"IA Cores Power:\s+([\d.]+)\s*(W|mW)\b", line)
+        if m: sd["intel_ia_cores_power_mw"] = float(m.group(1)) * (1000.0 if m.group(2) == "W" else 1.0)
+        m = re.search(r"GT Cores Power:\s+([\d.]+)\s*(W|mW)\b", line)
+        if m: sd["intel_gt_cores_power_mw"] = float(m.group(1)) * (1000.0 if m.group(2) == "W" else 1.0)
     if sd:
         samples.append(sd)
 
@@ -228,12 +230,18 @@ for i, s in enumerate(samples):
 # Frequency cliffs — split into "early" (first 30 s) and "post-warmup" (after 90 s).
 # The textbook bad-batch signature is a cliff to base clock within 30 s under load,
 # which the previous version's 90 s warmup-skip threw away.
+#
+# Skip the first 2 samples of the early window: powermetrics begins sampling
+# before the multiprocessing.Pool workers have all spawned, so samples 0-1 may
+# capture mid-launch transients with artificially low P-core frequencies. That
+# would produce a false-positive cliff on healthy units (especially desktops).
+SAMPLE_LAUNCH_SKIP = 2
 early_window = max(1, 30 // sample)
 warmup_skip  = max(1, 90 // sample)
 
 early_cliff_pct = None
-if len(p_freqs) > early_window + 2:
-    early = p_freqs[:early_window]
+if len(p_freqs) > SAMPLE_LAUNCH_SKIP + early_window + 2:
+    early = p_freqs[SAMPLE_LAUNCH_SKIP:SAMPLE_LAUNCH_SKIP + early_window]
     if early:
         peak_early = max(early)
         min_early  = min(early)
@@ -273,6 +281,15 @@ elif len(samples) < expected_min_samples:
 if not p_freqs and data_quality == "ok":
     data_quality = "few_samples"
     data_quality_notes.append("no P-cluster frequency data")
+# Sanity: if powermetrics returned samples but the key metrics are entirely
+# absent (likely a macOS-version format change), surface it loudly.
+if samples and not cpu_temps:
+    data_quality_notes.append(
+        "no CPU die temperature data captured — powermetrics output format may "
+        "have changed in this macOS version; the temp-based verdict checks were skipped"
+    )
+    if data_quality == "ok":
+        data_quality = "few_samples"
 
 # Chassis-class thresholds (mirror Verification/Pass-Fail Criteria.md).
 THRESHOLDS = {
@@ -353,12 +370,25 @@ else:
     elif steady_vs_peak is not None and steady_vs_peak < T["steady_warn"]:
         warn_signals.append(f"steady-state {steady_vs_peak:.1f}% in warn range ({chassis})")
 
-    # Fan ramp (skip for fanless)
+    # Fan ramp (skip for fanless).
+    # On desktop, "fan doesn't engage" is documented as fail (not warn).
+    # No-fan-data is an info note, not a warn — clamshell mode, USB-only mini,
+    # and macOS-version-specific powermetrics quirks all produce empty fan_avgs
+    # without indicating a defect.
     if T["expect_fan_ramp"]:
         if not fan_avgs:
-            warn_signals.append("no fan data captured (expected fan ramp for chassis class)")
+            data_quality_notes.append(
+                "no fan data captured by powermetrics (clamshell / sampler quirk?) — "
+                "verify fan engagement manually"
+            )
         elif max(fan_avgs) - min(fan_avgs) < 200:
-            warn_signals.append("fan RPM did not appreciably ramp under load")
+            if chassis == "desktop":
+                fail_signals.append(
+                    f"fan RPM did not ramp under load (max-min < 200 RPM) "
+                    f"on {chassis} chassis — fan likely not engaging"
+                )
+            else:
+                warn_signals.append("fan RPM did not appreciably ramp under load")
 
     if data_quality == "few_samples":
         warn_signals.extend(data_quality_notes)

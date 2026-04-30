@@ -64,6 +64,7 @@ Test methodology: cold-start burst (5 s) → chassis-class-aware warmup (discard
 | `early_vs_late_decline_pct` (early half mean → late half mean) | < 5% | 5–10% | > 10% |
 | Mean throughput vs. calibration baseline | within ±10% | within ±15% | > 15% |
 | `burst_to_steady_ratio` (mean / burst throughput) | informational — see below |||
+| `max_worker_imbalance_pct` (worst within-iter spread across workers) | < 10% | 10–20% | > 20% |
 | Dead worker (any iter throughput == 0) | n/a | n/a | any |
 
 **Compound-warn escalation:** the script automatically escalates **2 or more independent warn signals** to `fail`. A unit that lands in WARN on spread *and* decline *and* ratio at the same time isn't borderline — it's failing across multiple methodologies. The single-warn-rerun discipline (Runbook Phase 4) only applies to a single warn signal.
@@ -91,9 +92,9 @@ The thermal test reports both an **early-window cliff** (first 30 s, the textboo
 |---|---|---|---|
 | CPU die temp max | < 100°C | 100–105°C | > 105°C |
 | Steady-state P-core freq vs. peak | ≥ 70% | 60–70% | < 60% |
-| **Early-window** (first 30 s) frequency cliff | < 25% | 25–40% | > 40% |
+| **Early-window** (first 30 s, after a 10 s startup skip) frequency cliff | < 25% | 25–40% | > 40% |
 | Mid-run frequency cliff (after 90 s) | < 20% | 20–30% | > 30% |
-| Fan RPM ramp under load | ≥ 200 RPM | < 200 RPM | doesn't engage |
+| Fan RPM ramp under load | ≥ 200 RPM | 1–199 RPM | no fan data captured (info-only) |
 
 ### `fanless` (Apple Silicon MacBook Air)
 
@@ -117,7 +118,7 @@ Massive thermal headroom — strictest thresholds, throttling is a real defect:
 | Steady-state P-core freq vs. peak | ≥ 90% | 80–90% | < 80% |
 | Early-window cliff | < 15% | 15–25% | > 25% |
 | Mid-run cliff | < 10% | 10–20% | > 20% |
-| Fan RPM ramp | clearly increasing | flat | doesn't engage |
+| Fan RPM ramp under load | ≥ 200 RPM increase | — | < 200 RPM — fan likely not engaging (FAIL on desktop) |
 
 ### `intel-laptop` (Intel MacBook Pro / Air)
 
