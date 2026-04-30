@@ -57,7 +57,10 @@ jobs:
           # Find every .md in the repo, except inside .git or build artifacts.
           while IFS= read -r md; do
             base_dir=$(dirname "$md")
-            grep -oE '\]\([^)]+\)' "$md" | sed -E 's/^\]\(([^)]+)\)$/\1/' \
+            # `grep ... || true` — files without any markdown links (e.g. PR
+            # template, sometimes a CHANGELOG) make grep exit 1, which combined
+            # with `set -o pipefail` would abort the whole step.
+            { grep -oE '\]\([^)]+\)' "$md" || true; } | sed -E 's/^\]\(([^)]+)\)$/\1/' \
               | while IFS= read -r link; do
                   case "$link" in
                     http://*|https://*|mailto:*|\#*) continue ;;
