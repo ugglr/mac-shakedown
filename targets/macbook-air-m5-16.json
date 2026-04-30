@@ -1,0 +1,8 @@
+{
+  "name": "MacBook Air — M5 — 16 GB",
+  "chip_pattern": "Apple M5",
+  "memory_gb": 16,
+  "model_must_include": "Air",
+  "calibration_dir": "examples/m5-max-2026",
+  "thermal_chassis_class": "fanless"
+}

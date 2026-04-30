@@ -1,0 +1,8 @@
+{
+  "name": "MacBook Pro 16-inch — M5 Max — 64 GB",
+  "chip_pattern": "M5 Max",
+  "memory_gb": 64,
+  "model_must_include": "16",
+  "calibration_dir": "examples/m5-max-2026",
+  "thermal_chassis_class": "active-cooled-pro"
+}

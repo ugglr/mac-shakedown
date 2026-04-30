@@ -1,0 +1,15 @@
+.DS_Store
+.obsidian/workspace*
+.obsidian/cache
+.obsidian/graph.json
+.claude/settings.local.json
+
+# Run outputs (may contain serials, system info)
+Reports/*
+!Reports/.gitkeep
+!Reports/SCHEMA.md
+
+# Local scratch
+.macqa/
+*.log
+*.tmp
