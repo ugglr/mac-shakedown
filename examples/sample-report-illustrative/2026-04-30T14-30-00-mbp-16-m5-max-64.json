@@ -19,13 +19,16 @@
     "model": "MacBook Pro",
     "model_identifier": "Mac17,1",
     "chip": "Apple M5 Max",
+    "is_apple_silicon": true,
     "perf_cores": 12,
     "efficiency_cores": 4,
+    "logical_cpus": 16,
     "memory_gb": 64,
     "storage_gb": 1024,
     "macos_version": "macOS 16.3 (Tahoe)",
     "kernel_version": "Darwin 26.3.0",
-    "serial_hash": "sha256:7c3f8a2e9d1b5f4c8e2a6b9d1e4f7c3a8b5e2f9c1a4d7b3e6f9a2c5b8d1e4f7c"
+    "serial_hash": "sha256:7c3f8a2e9d1b5f4c8e2a6b9d1e4f7c3a8b5e2f9c1a4d7b3e6f9a2c5b8d1e4f7c",
+    "power_adapter": {"name": "140W USB-C Power Adapter", "wattage": "140W", "connected": true, "charging": false}
   },
 
   "phases": {
@@ -105,10 +108,13 @@
         "max_to_min_ratio": 1.004,
         "early_vs_late_decline_pct": 0.213,
         "burst_to_steady_ratio": 0.806,
-        "verdict_reasons": [
-          "spread 0.41%, ratio 1.00×, decline 0.21% — within healthy range"
-        ]
-      }
+        "worker_imbalance_pct_per_iter": [0.4, 0.6, 0.3, 0.5, 0.4],
+        "median_worker_imbalance_pct": 0.4,
+        "workload": "sha256-parallel (hardware-accelerated on Apple Silicon — see script header CAVEAT)"
+      },
+      "verdict_reasons": [
+        "spread 0.41%, ratio 1.00×, decline 0.21% — within healthy range"
+      ]
     },
     "5_thermal_load": {
       "verdict": "pass",
@@ -121,17 +127,19 @@
         "data_quality": "ok",
         "data_quality_notes": [],
         "powermetrics_rc": 0,
+        "ambient_temp_c": {"first_sample": 22.3, "max_during_run": 24.1},
         "cpu_die_temp_c": {"n": 120, "min": 64.2, "max": 94.8, "mean": 89.3, "first": 64.2, "last": 91.7},
         "gpu_die_temp_c": {"n": 120, "min": 38.1, "max": 52.4, "mean": 47.8, "first": 38.1, "last": 49.6},
         "fan_rpm_avg":    {"n": 120, "min": 1840.0, "max": 5840.0, "mean": 5510.3, "first": 1840.0, "last": 5780.5},
         "p_cluster_freq_mhz": {"n": 120, "min": 3540, "max": 4280, "mean": 3892, "first": 4280, "last": 3580},
         "combined_power_w": {"n": 120, "min": 8.4, "max": 64.2, "mean": 58.7, "first": 8.4, "last": 60.3},
+        "early_cliff_pct": 6.8,
         "frequency_cliff_pct": 8.1,
-        "steady_state_vs_peak_pct": 84.3,
-        "verdict_reasons": [
-          "all thresholds passed (active-cooled-pro)"
-        ]
-      }
+        "steady_state_vs_peak_pct": 84.3
+      },
+      "verdict_reasons": [
+        "all thresholds passed (active-cooled-pro)"
+      ]
     },
     "6_display": {
       "verdict": "pass",

@@ -29,7 +29,7 @@ A target preset lets users run `claude "run QA --target <name>"` instead of typi
 | `memory_gb` | Asserted against `sysctl hw.memsize` |
 | `model_must_include` | Substring asserted against `machine_model` (catches chassis size) |
 | `calibration_dir` | Path to the `examples/<generation>/` notes the agent should reference |
-| `thermal_chassis_class` | One of `fanless`, `active-cooled-pro`, `desktop` — sets thermal thresholds |
+| `thermal_chassis_class` | One of `fanless`, `active-cooled-pro`, `desktop`, `intel-laptop`, `intel-desktop` — sets thermal thresholds and Phase 4 warmup duration. See [`targets/README.md`](targets/README.md) for the per-class definition. |
 
 Open a PR adding the JSON. Match an existing one for style.
 
@@ -54,11 +54,25 @@ The verification scripts and runbook **don't need to change** — they're calibr
 
 The 5 scripts in `Verification/scripts/` are deliberately self-contained — bash + Python heredocs, no external dependencies beyond what ships with macOS. Keep it that way. If you need to add a third-party benchmark (Geekbench, sysbench), make it optional with a fallback to the built-in equivalent.
 
+### Validating changes to a script
+
+Before opening a PR that touches `Verification/scripts/*.sh` or threshold values:
+
+1. **Run the affected script(s)** on your own Mac. Paste the JSON output into the PR body.
+2. **Note your chip / RAM / macOS version** — the validation context.
+3. **Run the lint workflow locally** if you can: `shellcheck -x -e SC1091 Verification/scripts/*.sh`. CI runs the same plus heredoc syntax checks and JSON validation.
+4. For methodology changes (new metric, threshold shift), include the rationale in the PR description and a brief note about the comparability impact.
+
+We'll need at least one independent confirmation on different hardware before merging methodology changes. Cross-platform claims (Intel + Apple Silicon) need at least one run of each.
+
 ## Test methodology changes
 
 Changes to the runbook, pass/fail thresholds, or the test scripts themselves should be discussed in an issue first. These directly impact submitted reports — changing the variance threshold across a release means baselines from previous reports stop being comparable.
 
-When the methodology changes, bump the schema version in `Reports/SCHEMA.md` so submitted reports are sortable across method versions.
+When the methodology changes:
+- Bump the schema version in [`Reports/SCHEMA.md`](Reports/SCHEMA.md) (patch for additive, minor/major for breaking).
+- Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under the Unreleased section calling out the comparability impact.
+- If the change affects how reports compare across submissions (e.g. new metric, threshold tightening), call it out explicitly so the future aggregator can bucket old vs. new submissions.
 
 ## Reports submission (future)
 

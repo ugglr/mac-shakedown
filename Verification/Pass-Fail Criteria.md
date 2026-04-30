@@ -43,7 +43,19 @@ Pass = everything advertised by Apple for that exact model is reported. Fail = a
 
 ## CPU variance test (the headline check)
 
-Test methodology: 90 s warmup (discarded) → 5 × 60 s timed iterations on a thermally-saturated chassis.
+Test methodology: cold-start burst (5 s) → chassis-class-aware warmup (discarded) → 5 × 60 s timed iterations on a thermally-saturated chassis.
+
+**Warmup duration by chassis class** (configurable via `WARMUP_SEC` env var):
+
+| Chassis class | Warmup default | Rationale |
+|---|---|---|
+| `fanless` | 60 s | Apple Silicon Air saturates fast |
+| `active-cooled-pro` | 300 s | 16" MBP saturation is 5–8 min; 90 s leaves iter 1 still on the heating curve |
+| `desktop` | 180 s | Some headroom, but bigger thermal mass |
+| `intel-laptop` | 180 s | Intel laptops saturate quickly under load |
+| `intel-desktop` | 180 s | Similar |
+
+**Verdict thresholds** (chassis-agnostic — variance is universal):
 
 | Check | Pass | Warn | Fail |
 |---|---|---|---|
@@ -51,31 +63,39 @@ Test methodology: 90 s warmup (discarded) → 5 × 60 s timed iterations on a th
 | `max_to_min_ratio` | < 1.2× | 1.2–1.4× | ≥ 1.4× |
 | `early_vs_late_decline_pct` (early half mean → late half mean) | < 5% | 5–10% | > 10% |
 | Mean throughput vs. calibration baseline | within ±10% | within ±15% | > 15% |
+| `burst_to_steady_ratio` (mean / burst throughput) | informational — see below |||
+| Dead worker (any iter throughput == 0) | n/a | n/a | any |
 
-Any FAIL across these strongly suggests a batch-level defect — most commonly hot-spot throttling from uneven thermal paste application. Cite the calibration's Performance Variance note in the report (e.g. [for the M5 generation](../examples/m5-2026/Issues/Performance%20Variance.md)) and recommend the user not accept this unit.
+**Compound-warn escalation:** the script automatically escalates **2 or more independent warn signals** to `fail`. A unit that lands in WARN on spread *and* decline *and* ratio at the same time isn't borderline — it's failing across multiple methodologies. The single-warn-rerun discipline (Runbook Phase 4) only applies to a single warn signal.
 
 Why three metrics? They catch different failure modes:
 - `spread_pct` catches noisy, intermittent throttling (some iters fast, some slow, in any order).
 - `max_to_min_ratio` catches a single-iteration cliff (one iteration drastically slower than the rest).
 - `early_vs_late_decline_pct` catches a *monotonic* decline — one iteration after another dropping — the specific signature of a hot spot crossing its threshold mid-test, which `spread_pct` understates if the slope is steady.
 
-> **Calibration baseline.** Once the [hosted aggregator](../README.md#roadmap) lands, the "mean throughput vs. baseline" check will use crowd-sourced reference distributions. Until then, the variance/decline metrics are the dominant signal.
+> **`burst_to_steady_ratio` is advisory.** A ratio close to 1.0 (steady ≈ burst) on an `active-cooled-pro` chassis can indicate "always-throttled" units that look consistent in iterations because they were already throttled at the warmup tail. But on `fanless` and `desktop` classes a high ratio is normal (Air has no thermal headroom to give up; desktop has so much that steady stays close to burst). The script records the value but does *not* drive verdict from it. Compare against the calibration baseline.
+
+> **Workload caveat.** Phase 4 uses parallel SHA-256, which is hardware-accelerated on Apple Silicon (and Coffee Lake+ Intel). The test stresses the SHA engines, multiprocessing scheduling, and chassis thermal mass — but does **not** probe integer pipelines, memory bandwidth, or large-cache thermal behavior as deeply as Cinebench / Geekbench would. Public reports of the M5 Max defect originate from those benchmarks; this test catches *correlated* signals (timing variance + thermal saturation behavior) but isn't 1:1 with the reported workloads. A non-accelerated workload pass is on the [roadmap](../README.md#roadmap).
+
+> **Calibration baseline.** Once the [hosted aggregator](../README.md#roadmap) lands, the "mean throughput vs. baseline" check uses crowd-sourced reference distributions per (chip, memory, perf_cores). Until then, the variance/decline metrics are the dominant signal — they don't need an external reference because they measure *consistency within a single unit*.
 
 ## Sustained thermal load — by chassis class
 
-Set on the target via `thermal_chassis_class`. Defaults to `active-cooled-pro` if unset.
+Set on the target via `thermal_chassis_class`. Defaults to `active-cooled-pro` if unset. The script automatically escalates **3 or more warn signals** to `fail` (compound-warn escalation).
 
-### `active-cooled-pro` (MacBook Pro 14" / 16")
+The thermal test reports both an **early-window cliff** (first 30 s, the textbook bad-batch signature — "cliffs to base clock within 30 s") and a **mid-run cliff** (after the 90 s load-startup transient). Both are evaluated against chassis-class thresholds; either crossing fail = unit fails.
+
+### `active-cooled-pro` (Apple Silicon MacBook Pro 14" / 16")
 
 | Check | Pass | Warn | Fail |
 |---|---|---|---|
 | CPU die temp max | < 100°C | 100–105°C | > 105°C |
 | Steady-state P-core freq vs. peak | ≥ 70% | 60–70% | < 60% |
-| Mid-run frequency cliff | none > 20% | one 20–30% | any > 30% |
-| Time to first throttle | > 90 s | 30–90 s | < 30 s |
-| Fan RPM ramp under load | clearly increasing | flat | doesn't engage |
+| **Early-window** (first 30 s) frequency cliff | < 25% | 25–40% | > 40% |
+| Mid-run frequency cliff (after 90 s) | < 20% | 20–30% | > 30% |
+| Fan RPM ramp under load | ≥ 200 RPM | < 200 RPM | doesn't engage |
 
-### `fanless` (MacBook Air)
+### `fanless` (Apple Silicon MacBook Air)
 
 Air throttles aggressively by design. Looser thresholds:
 
@@ -83,10 +103,11 @@ Air throttles aggressively by design. Looser thresholds:
 |---|---|---|---|
 | CPU die temp max | < 105°C | 105–110°C | > 110°C |
 | Steady-state P-core freq vs. peak | ≥ 50% | 40–50% | < 40% |
-| Mid-run frequency cliff | none > 40% | one 40–50% | any > 50% |
-| Time to first throttle | n/a (always throttles) | — | — |
+| Early-window cliff | < 50% | 50–70% | > 70% |
+| Mid-run cliff | < 40% | 40–50% | > 50% |
+| Fan ramp | n/a (no fan) | n/a | n/a |
 
-### `desktop` (Mac mini / Studio / iMac)
+### `desktop` (Apple Silicon Mac mini / Studio / iMac)
 
 Massive thermal headroom — strictest thresholds, throttling is a real defect:
 
@@ -94,14 +115,45 @@ Massive thermal headroom — strictest thresholds, throttling is a real defect:
 |---|---|---|---|
 | CPU die temp max | < 90°C | 90–100°C | > 100°C |
 | Steady-state P-core freq vs. peak | ≥ 90% | 80–90% | < 80% |
-| Mid-run frequency cliff | none > 10% | one 10–20% | any > 20% |
-| Fan RPM ramp under load | clearly increasing | flat | doesn't engage |
+| Early-window cliff | < 15% | 15–25% | > 25% |
+| Mid-run cliff | < 10% | 10–20% | > 20% |
+| Fan RPM ramp | clearly increasing | flat | doesn't engage |
+
+### `intel-laptop` (Intel MacBook Pro / Air)
+
+Intel laptops throttle hard by design — looser steady-state and cliff thresholds. Tjmax is typically 100°C and Intel throttles aggressively well before that.
+
+| Check | Pass | Warn | Fail |
+|---|---|---|---|
+| CPU die temp max | < 98°C | 98–105°C | > 105°C |
+| Steady-state CPU freq vs. peak | ≥ 50% | 35–50% | < 35% |
+| Early-window cliff | < 40% | 40–55% | > 55% |
+| Mid-run cliff | < 35% | 35–50% | > 50% |
+| Fan RPM ramp | clearly increasing | flat | doesn't engage |
+
+### `intel-desktop` (Intel iMac / Mac mini)
+
+| Check | Pass | Warn | Fail |
+|---|---|---|---|
+| CPU die temp max | < 90°C | 90–100°C | > 100°C |
+| Steady-state CPU freq vs. peak | ≥ 75% | 60–75% | < 60% |
+| Early-window cliff | < 25% | 25–40% | > 40% |
+| Mid-run cliff | < 20% | 20–30% | > 30% |
+| Fan RPM ramp | clearly increasing | flat | doesn't engage |
+
+### Data quality (all classes)
+
+| Check | Pass | Warn | Fail |
+|---|---|---|---|
+| `data_quality` | "ok" | "few_samples" | "no_samples" |
+
+`no_samples` is a **fatal verdict** — no metrics can be trusted, so the entire phase fails regardless of other readings. This catches sudo failures, powermetrics format changes, and similar.
 
 ## Display visual
 
 Manual. Pass = no dead/stuck pixels, no severe backlight bleed, no obvious tint patches.
 
-Note: mini-LED blooming around bright objects on dark backgrounds is **inherent to the panel, not a defect** — do not fail for this. Applies to MBP 14"/16" and Studio Display.
+Note: mini-LED blooming around bright objects on dark backgrounds is **inherent to the panel, not a defect** — do not fail for this. Applies to MBP 14"/16" Apple Silicon and the Studio Display.
 
 ## Build quality (manual)
 

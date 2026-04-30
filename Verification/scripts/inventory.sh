@@ -1,14 +1,23 @@
 #!/bin/bash
-# inventory.sh — dump hardware inventory as JSON
-# Usage: ./inventory.sh
-# Output: JSON to stdout with `summary` (key facts), `storage`, `displays`,
-#         `cameras`, `audio`, `thunderbolt_ports`, plus full `raw` system_profiler.
+# inventory.sh — dump hardware inventory as JSON for the report's `unit` block.
+# Output: JSON to stdout. The `summary` block is the comparable / submission-safe
+# subset; serials are SHA-256 hashed by default (set INCLUDE_PLAINTEXT_SERIAL=1 to
+# also include the raw serial, e.g. for warranty cross-reference). The `_raw_…`
+# blocks contain the full system_profiler dump for local debugging — strip these
+# before submission to the aggregator (they may include Bluetooth-paired device
+# IDs, Wi-Fi SSIDs, USB device serials, etc.).
 
 set -euo pipefail
 
-python3 - <<'PYEOF'
+INCLUDE_PLAINTEXT_SERIAL=${INCLUDE_PLAINTEXT_SERIAL:-0}
+
+python3 - "$INCLUDE_PLAINTEXT_SERIAL" <<'PYEOF'
+import hashlib
 import json
 import subprocess
+import sys
+
+INCLUDE_PLAINTEXT_SERIAL = sys.argv[1] == "1"
 
 DATATYPES = [
     "SPHardwareDataType",
@@ -39,9 +48,14 @@ def sysctl(key):
     try:
         return subprocess.check_output(
             ["sysctl", "-n", key], stderr=subprocess.DEVNULL
-        ).decode().strip()
+        ).decode().strip() or None
     except Exception:
         return None
+
+def hash_serial(s):
+    if not s:
+        return None
+    return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 raw = {dt: run_sp(dt) for dt in DATATYPES}
 
@@ -52,26 +66,42 @@ def first(d, k):
 hw = first(raw.get("SPHardwareDataType", {}), "SPHardwareDataType")
 sw = first(raw.get("SPSoftwareDataType", {}), "SPSoftwareDataType")
 
-memsize_bytes = int(sysctl("hw.memsize") or 0)
-memsize_gb = round(memsize_bytes / (1024**3))
+# Memory size — guard against non-numeric sysctl output.
+memsize_raw = sysctl("hw.memsize")
+try:
+    memsize_bytes = int(memsize_raw or 0)
+    memsize_gb = round(memsize_bytes / (1024**3))
+except (ValueError, TypeError):
+    memsize_bytes = None
+    memsize_gb = None
+
+raw_serial = hw.get("serial_number")
 
 summary = {
+    # Identity (comparable across submissions)
     "model": hw.get("machine_model"),
     "model_identifier": hw.get("machine_name"),
-    "chip": hw.get("chip_type"),
+    # Apple Silicon reports `chip_type`; Intel reports `cpu_type` instead.
+    "chip": hw.get("chip_type") or hw.get("cpu_type"),
+    "is_apple_silicon": bool(hw.get("chip_type")),
     "physical_memory": hw.get("physical_memory"),
     "memory_gb": memsize_gb,
-    "serial_number": hw.get("serial_number"),
+    "perf_cores": int(sysctl("hw.perflevel0.physicalcpu") or 0) or None,
+    "efficiency_cores": int(sysctl("hw.perflevel1.physicalcpu") or 0) or None,
+    "logical_cpus": int(sysctl("hw.ncpu") or 0) or None,
     "cpu_brand": sysctl("machdep.cpu.brand_string"),
-    "perf_cores": sysctl("hw.perflevel0.physicalcpu"),
-    "efficiency_cores": sysctl("hw.perflevel1.physicalcpu"),
-    "logical_cpus": sysctl("hw.ncpu"),
     "macos_version": sw.get("os_version"),
     "kernel_version": sw.get("kernel_version"),
     "boot_volume": sw.get("boot_volume"),
+    # Hashed serial — README claims this; this is where it actually happens.
+    "serial_hash": hash_serial(raw_serial),
 }
+if INCLUDE_PLAINTEXT_SERIAL:
+    summary["serial_number"] = raw_serial
+    summary["_warn"] = "plaintext serial included by INCLUDE_PLAINTEXT_SERIAL=1; strip before submission"
 
-# Storage
+# Storage (model + revision useful for comparison — Apple has shipped 256GB
+# single-die SSD perf regressions in the past).
 storage = []
 nvme_root = raw.get("SPNVMeDataType", {}).get("SPNVMeDataType", [])
 for controller in nvme_root:
@@ -115,9 +145,22 @@ for sect in raw.get("SPAudioDataType", {}).get("SPAudioDataType", []) or []:
             "output": it.get("coreaudio_device_output"),
         })
 
-# Bluetooth & Wi-Fi presence
+# Bluetooth & Wi-Fi presence (presence only; details are in _raw_*)
 bt_present = bool(raw.get("SPBluetoothDataType", {}).get("SPBluetoothDataType"))
 wifi_present = bool(raw.get("SPAirPortDataType", {}).get("SPAirPortDataType"))
+
+# Power adapter info (affects sustained-perf headroom on laptops while charging).
+adapter = None
+for section in raw.get("SPPowerDataType", {}).get("SPPowerDataType", []) or []:
+    name = (section.get("_name", "") or "").lower()
+    if "ac charger" in name or "power adapter" in name or "ac power" in name:
+        adapter = {
+            "name":      section.get("_name"),
+            "wattage":   section.get("sppower_ac_charger_watts") or section.get("Watts"),
+            "connected": section.get("sppower_ac_charger_connected") == "spbattery_charger_connected_yes" if section.get("sppower_ac_charger_connected") else None,
+            "charging":  section.get("sppower_ac_charger_charging") == "spbattery_charger_charging_yes"  if section.get("sppower_ac_charger_charging")  else None,
+        }
+        break
 
 result = {
     "summary": summary,
@@ -128,7 +171,11 @@ result = {
     "audio": audio_items,
     "bluetooth_present": bt_present,
     "wifi_present": wifi_present,
-    "raw": raw,
+    "power_adapter": adapter,
+    # Full system_profiler dump — kept for local debugging. Strip before
+    # submitting to the aggregator: contains paired BT device IDs, Wi-Fi SSIDs,
+    # USB device serials, etc. — fingerprints the user environment.
+    "_raw_system_profiler": raw,
 }
 
 print(json.dumps(result, indent=2, default=str))

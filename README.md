@@ -15,6 +15,8 @@ Some Mac generations ship with batch-level defects that don't show up in a quick
 Shakedown is the procedure for catching those.
 
 > **Status (v0.1):** the methodology has not yet been validated against a confirmed-defective unit — thresholds are derived from public reports and engineering reasoning. Expect them to tighten as crowd-sourced submissions land. Treat current results as advisory, not authoritative; if a verdict is borderline, rerun before deciding.
+>
+> Phase 4 uses parallel SHA-256, which is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. The variance methodology transfers cleanly to any sustained workload — the SHA choice is for zero-install portability — but the test doesn't probe integer pipelines or memory bandwidth as deeply as Cinebench / Geekbench would. A non-accelerated workload pass is on the [roadmap](#roadmap).
 
 ## Quick start
 
@@ -45,7 +47,7 @@ The agent walks the [runbook](Verification/Runbook.md) end to end (~45 min on a 
 
 ## Supported agents
 
-Shakedown's agent instructions live in [`AGENTS.md`](AGENTS.md), following the cross-tool convention so any sufficiently capable agent can run it. The harness needs an agent that can: run shell commands, read files, ask the user yes/no questions, and sit through ~16 minutes of blocking benchmarks.
+Shakedown's agent instructions live in [`AGENTS.md`](AGENTS.md), following the cross-tool convention so any sufficiently capable agent can run it. The harness needs an agent that can: run shell commands, read files, ask the user yes/no questions, and sit through ~16–20 minutes of blocking benchmarks.
 
 | Agent | Status | Notes |
 |---|---|---|
@@ -162,9 +164,14 @@ Then read the values against [Pass-Fail Criteria](Verification/Pass-Fail%20Crite
 
 ## Roadmap
 
-- **Hosted aggregator.** Submit your `Reports/<ts>.json` to a public site for crowd-sourced baselines per generation. Once we have N submissions from known-good units, the "baseline TBD" caveat in the variance test goes away. (See [`Reports/SCHEMA.md`](Reports/SCHEMA.md) — reports are designed for opt-in submission.)
-- **More generation calibrations.** M6, M7, etc. as they land.
-- **GPU variance test.** Currently CPU-only.
+- **Hosted aggregator.** Submit your `Reports/<ts>.json` to a public site for crowd-sourced baselines per generation. Once we have N submissions from known-good units, the "baseline TBD" caveat in the variance test goes away — the per-SKU reference distribution comes from real data, and your unit's PASS/FAIL is contextualized against units of the same chip + memory + perf-cores. (See [`Reports/SCHEMA.md`](Reports/SCHEMA.md) — reports are designed for opt-in submission.)
+- **Non-accelerated workload pass.** Optional Phase 4b that runs a workload without hardware acceleration (e.g. unaccelerated AES, BLAKE2b in pure Python, or a pinned matrix-multiply kernel) so the test stresses integer pipelines and memory bandwidth too. Catches batch defects that don't show up under SHA-NI / Apple Silicon's crypto engines.
+- **GPU variance test.** Currently CPU-only. M5 Max GPU is the bigger thermal contributor and a Metal compute load would be much more aggressive than CPU SHA-256.
+- **NVMe SSD performance.** Currently we only check SMART status — Apple has shipped 256 GB single-die SSD perf regressions on past gens, worth catching.
+- **Memory bandwidth.** STREAM-style benchmark.
+- **Per-core pinning.** macOS lacks public CPU affinity APIs, so we can't pin workers to specific cores. A defective single core gets averaged out across N P-cores. Reporting `worker_imbalance_pct_per_iter` is a partial mitigation; investigating workarounds (ASIA-style fence, pthread_qos hints) is on the list.
+- **More generation calibrations.** Apple Silicon M1–M4 (the scripts work today; only the calibration notes and target presets need filling), Intel-era issues (T2 chip, butterfly keyboards 2018–19, GPU stutter 2019).
+- **14" vs 16" thermal sub-classes.** The 14" M5 Max is documented to throttle by design under sustained Pro-class thresholds — split off `active-cooled-pro-14` and `active-cooled-pro-16` once we have data points to set the looser-but-not-too-loose thresholds.
 
 ## Origin
 

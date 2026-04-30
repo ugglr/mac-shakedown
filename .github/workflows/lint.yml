@@ -48,14 +48,15 @@ jobs:
           done
 
       - name: Verify markdown links resolve to existing files
-        # Scan README/CONTRIBUTING/AGENTS for ](relative/path) links and check
-        # each exists on disk. Skips http(s):// and #anchor-only references.
+        # Scan all in-repo markdown for ](relative/path) links and check each
+        # exists on disk. Skips http(s)://, mailto:, and #anchor-only refs.
+        # URL-decodes %20 etc. so links to files with spaces resolve correctly.
         run: |
           set -euo pipefail
           rc=0
-          for md in README.md CONTRIBUTING.md AGENTS.md; do
-            [ -f "$md" ] || continue
-            # Extract the URL portion of every []() link, one per line.
+          # Find every .md in the repo, except inside .git or build artifacts.
+          while IFS= read -r md; do
+            base_dir=$(dirname "$md")
             grep -oE '\]\([^)]+\)' "$md" | sed -E 's/^\]\(([^)]+)\)$/\1/' \
               | while IFS= read -r link; do
                   case "$link" in
@@ -64,10 +65,17 @@ jobs:
                   # Strip any #anchor or ?query suffix
                   path="${link%%#*}"; path="${path%%\?*}"
                   [ -z "$path" ] && continue
-                  if [ ! -e "$path" ]; then
-                    echo "BROKEN LINK in $md: $link" >&2
+                  # URL-decode %20 etc. (cheap inline decode for the common cases)
+                  decoded=$(printf '%b' "${path//%/\\x}")
+                  # Resolve relative to the markdown file's directory.
+                  case "$decoded" in
+                    /*) candidate="$decoded" ;;
+                    *)  candidate="$base_dir/$decoded" ;;
+                  esac
+                  if [ ! -e "$candidate" ]; then
+                    echo "BROKEN LINK in $md → $link (resolved to $candidate)" >&2
                     exit 1
                   fi
                 done || rc=1
-          done
+          done < <(find . -name '*.md' -not -path './.git/*' -not -path './node_modules/*')
           exit $rc

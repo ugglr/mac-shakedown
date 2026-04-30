@@ -4,17 +4,25 @@ Shakedown runs entirely on the user's own Mac. The surface area is small: five s
 
 ## What the scripts do with elevated privileges
 
-- `Verification/scripts/thermal-load.sh` invokes `sudo powermetrics` for read-only thermal and CPU-frequency sampling. This is the **only** script that requires elevation, and `powermetrics` is the only command run under `sudo`.
+- `Verification/scripts/thermal-load.sh` invokes `sudo powermetrics` for read-only thermal, CPU-frequency, and ambient-temp sampling. This is the **only** script that requires elevation, and `powermetrics` is the only command run under `sudo`.
 - No other script asks for, requires, or uses elevated privileges.
-- All other data collection is unprivileged: SHA-256 over `/dev/urandom` for the CPU workload, hardware facts via `system_profiler` / `ioreg` / `sysctl`, and battery state via `ioreg AppleSmartBattery`.
+- All other data collection is unprivileged: SHA-256 over a fixed in-memory 1 MB buffer for the CPU workload (deterministic; no I/O), hardware facts via `system_profiler` / `ioreg` / `sysctl`, and battery state via `ioreg AppleSmartBattery`.
 - Writes are confined to the repo's `Reports/` directory and short-lived tempfiles under `/var/folders/.../shakedown-*` (the system per-user temp area). Nothing is written elsewhere.
 - No outbound network requests are made by any script. Reports stay on the local disk unless the user chooses to share them.
+
+## Privacy in submitted reports
+
+If you submit a report to the (planned) hosted aggregator:
+
+- **Serial numbers are SHA-256 hashed by default.** `inventory.sh` and `battery.sh` emit `serial_hash` instead of the raw serial. The plaintext is included only if you set `INCLUDE_PLAINTEXT_SERIAL=1` (in which case the agent flips `submission_safe` to `false`).
+- **`_raw_*` fields** in the inventory and battery JSON contain full `system_profiler` / `ioreg` dumps that may include paired Bluetooth device IDs, Wi-Fi SSIDs, USB device serials, and other environment fingerprints. The agent strips these before submission. They remain in the local per-phase artifacts under `Reports/<ts>-raw/*.json` for your own debugging.
+- **`store_location`, `purchase_date`** are `null` by default and only populated if you opt in.
+- **`submission_safe: true`** is the agent's assertion that none of the above leaked through. Always check it before submitting.
 
 ## Reporting a vulnerability
 
 If you find a security issue in Shakedown, please report it privately rather than opening a public issue:
 
-- Open a private security advisory at `https://github.com/ugglr/mac-shakedown/security/advisories/new`, or
-- Email the maintainer: `<add-email-or-link>`.
+- Open a private security advisory at <https://github.com/ugglr/mac-shakedown/security/advisories/new>.
 
 Please include the affected script(s), macOS version, and reproduction steps. A response should arrive within a few days.

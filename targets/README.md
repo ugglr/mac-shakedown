@@ -29,6 +29,19 @@ If your config isn't here, either:
 
 | Class | Examples | Sustained-load expectation |
 |---|---|---|
-| `fanless` | MacBook Air | Throttles hard by design — looser thresholds |
-| `active-cooled-pro` | MacBook Pro 14"/16" | Should hold steady — strict thresholds |
-| `desktop` | Mac mini, Mac Studio, iMac | Massive headroom — strictest thresholds |
+| `fanless` | Apple Silicon MacBook Air | Throttles hard by design — looser thresholds |
+| `active-cooled-pro` | Apple Silicon MacBook Pro 14"/16" | Should hold steady — strict thresholds |
+| `desktop` | Apple Silicon Mac mini / Studio / iMac | Massive headroom — strictest thresholds |
+| `intel-laptop` | Intel MacBook Pro / Air | Throttles hard — pre-Apple-Silicon thermals are aggressive |
+| `intel-desktop` | Intel iMac / Mac mini | Decent headroom but tighter than Apple Silicon desktop |
+
+## Generation coverage
+
+| Generation | Status |
+|---|---|
+| Apple M5 (2026) | ✅ primary calibration ([`examples/m5-2026/`](../examples/m5-2026/)) |
+| Apple M1 / M2 / M3 / M4 | 🟡 scripts work, no per-generation calibration yet — add one when needed |
+| Intel (2018+) | 🟡 scripts work with `intel-laptop` / `intel-desktop` chassis classes; defect classes are different (T2, butterfly keyboards, GPU stutter) and warrant a separate calibration folder |
+| Pre-2018 Intel | 🔴 untested — `powermetrics` output format may differ; YMMV |
+
+For the older non-M5 generations the verification methodology (variance, thermal saturation, manual checks) transfers cleanly — only the *thresholds* and *known-defect lookup* need per-generation tuning. PRs welcome to add new calibrations under `examples/<generation>-<year>/`.

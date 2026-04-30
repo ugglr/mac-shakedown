@@ -1,0 +1,9 @@
+{
+  "name": "MacBook Pro 16-inch — Intel Core i7/i9 (2019)",
+  "chip_pattern": "Intel",
+  "memory_gb": null,
+  "model_must_include": "16",
+  "calibration_dir": "examples/m5-2026",
+  "thermal_chassis_class": "intel-laptop",
+  "_note": "Memory varies (16/32/64 GB). Set the agent's verbal target to your actual config (e.g. 'I bought a 16-inch Intel MBP with 32 GB') so the assertion is meaningful. The M5 calibration is reused as a placeholder until an Intel-era calibration is added — different defect classes apply (T2 issues, butterfly-keyboard 2018-19, GPU stutter 2019)."
+}
