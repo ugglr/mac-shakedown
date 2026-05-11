@@ -104,6 +104,23 @@ fi
 export CHASSIS_CLASS
 
 echo "shakedown: target=${TARGET:-<none>} chassis_class=$CHASSIS_CLASS"
+
+if [[ -z "${SHAKEDOWN_YES:-}" ]]; then
+  cat <<INFO >&2
+
+About to run ~18 min of sustained 100% CPU load (Phase 4 variance + Phase 5
+thermal). Fans will spin up loud and the chassis will get hot. macOS throttles
+to protect the chip, so nothing dangerous — but expect a noisy 20 min.
+
+Set SHAKEDOWN_YES=1 to skip this prompt (e.g. for scripted runs).
+INFO
+  read -r -p "Proceed? [y/N] " ans
+  if [[ ! "$ans" =~ ^[Yy] ]]; then
+    echo "shakedown: aborted before any load was run" >&2
+    exit 1
+  fi
+fi
+
 echo "shakedown: requesting sudo upfront (thermal phase needs it)"
 sudo -v
 
