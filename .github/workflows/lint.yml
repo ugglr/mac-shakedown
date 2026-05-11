@@ -48,37 +48,54 @@ jobs:
           done
 
       - name: Verify markdown links resolve to existing files
-        # Scan all in-repo markdown for ](relative/path) links and check each
-        # exists on disk. Skips http(s)://, mailto:, and #anchor-only refs.
-        # URL-decodes %20 etc. so links to files with spaces resolve correctly.
+        # Walk every in-repo .md, parse ](relative/path) links, confirm each
+        # resolves to a file on disk. Skips http(s)://, mailto:, and
+        # #anchor-only refs. URL-decodes %20 etc. so links to files with
+        # spaces resolve correctly.
+        #
+        # Implemented in Python instead of bash because the previous bash
+        # version used `${path//%/\\x}` parameter-expansion escapes that
+        # behave differently in zsh — false positives for contributors
+        # running this check locally on default-shell macOS.
         run: |
-          set -euo pipefail
-          rc=0
-          # Find every .md in the repo, except inside .git or build artifacts.
-          while IFS= read -r md; do
-            base_dir=$(dirname "$md")
-            # `grep ... || true` — files without any markdown links (e.g. PR
-            # template, sometimes a CHANGELOG) make grep exit 1, which combined
-            # with `set -o pipefail` would abort the whole step.
-            { grep -oE '\]\([^)]+\)' "$md" || true; } | sed -E 's/^\]\(([^)]+)\)$/\1/' \
-              | while IFS= read -r link; do
-                  case "$link" in
-                    http://*|https://*|mailto:*|\#*) continue ;;
-                  esac
-                  # Strip any #anchor or ?query suffix
-                  path="${link%%#*}"; path="${path%%\?*}"
-                  [ -z "$path" ] && continue
-                  # URL-decode %20 etc. (cheap inline decode for the common cases)
-                  decoded=$(printf '%b' "${path//%/\\x}")
-                  # Resolve relative to the markdown file's directory.
-                  case "$decoded" in
-                    /*) candidate="$decoded" ;;
-                    *)  candidate="$base_dir/$decoded" ;;
-                  esac
-                  if [ ! -e "$candidate" ]; then
-                    echo "BROKEN LINK in $md → $link (resolved to $candidate)" >&2
-                    exit 1
-                  fi
-                done || rc=1
-          done < <(find . -name '*.md' -not -path './.git/*' -not -path './node_modules/*')
-          exit $rc
+          python3 <<'PYEOF'
+          import os
+          import re
+          import sys
+          import urllib.parse
+
+          SKIP_PREFIXES = ("http://", "https://", "mailto:", "#")
+          SKIP_DIRS = {".git", "node_modules", ".claude"}
+          LINK_RE = re.compile(r"\]\(([^)]+)\)")
+
+          broken = []
+          for dirpath, dirnames, filenames in os.walk("."):
+              dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+              for fname in filenames:
+                  if not fname.endswith(".md"):
+                      continue
+                  md_path = os.path.join(dirpath, fname)
+                  base_dir = os.path.dirname(md_path)
+                  with open(md_path, encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
+                  for m in LINK_RE.finditer(content):
+                      link = m.group(1)
+                      if link.startswith(SKIP_PREFIXES):
+                          continue
+                      path = link.split("#", 1)[0].split("?", 1)[0]
+                      if not path:
+                          continue
+                      decoded = urllib.parse.unquote(path)
+                      if decoded.startswith("/"):
+                          candidate = decoded
+                      else:
+                          candidate = os.path.normpath(os.path.join(base_dir, decoded))
+                      if not os.path.exists(candidate):
+                          broken.append((md_path, link, candidate))
+
+          if broken:
+              for md, link, candidate in broken:
+                  print(f"BROKEN LINK in {md} → {link} (resolved to {candidate})",
+                        file=sys.stderr)
+              sys.exit(1)
+          PYEOF
