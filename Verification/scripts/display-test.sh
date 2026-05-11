@@ -1,12 +1,20 @@
 #!/bin/bash
 # display-test.sh — open a fullscreen color cycle in Safari for visual inspection.
-# Press F to fullscreen, Space to start cycling, ← / → to navigate, Esc / Cmd-Q to exit.
+# Press F to fullscreen, Space to start cycling, ← / → to navigate, Esc to exit
+# fullscreen, Cmd-W to close the tab when done.
 
 set -euo pipefail
 
 SECONDS_PER_COLOR=${SECONDS_PER_COLOR:-15}
+if ! [[ "$SECONDS_PER_COLOR" =~ ^[1-9][0-9]*$ ]]; then
+  echo "display-test.sh: SECONDS_PER_COLOR must be a positive integer (got: $SECONDS_PER_COLOR)" >&2
+  exit 2
+fi
 
-HTML=$(mktemp -t shakedown-display).html
+# Use mktemp -d so we control the .html extension; BSD mktemp -t treats
+# its arg as a literal prefix and appends random chars at the end.
+TMPDIR_DISPLAY=$(mktemp -d -t shakedown-display)
+HTML="$TMPDIR_DISPLAY/page.html"
 
 # Heredoc with no expansion, then sed in the duration
 cat > "$HTML" <<'HTML'
@@ -30,7 +38,7 @@ body{display:flex;flex-direction:column;align-items:center;justify-content:cente
 <body>
 <div class="label" id="label">PRESS F FOR FULLSCREEN, SPACE TO START</div>
 <div class="help" id="help">color cycle for dead pixels, backlight bleed, uniformity</div>
-<div class="controls-hint">F fullscreen · Space play/pause · ← → navigate · Esc exit</div>
+<div class="controls-hint">F fullscreen · Space play/pause · ← → navigate · Esc exit fullscreen · Cmd-W close tab</div>
 <script>
 const colors = [
   {bg:"#ffffff", name:"WHITE — look for dead/dim pixels and tint patches"},
@@ -55,7 +63,9 @@ function show(i) {
 }
 
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") window.close();
+  if (e.key === "Escape") {
+    if (document.fullscreenElement) document.exitFullscreen();
+  }
   else if (e.key === "f" || e.key === "F") {
     if (!document.fullscreenElement) document.documentElement.requestFullscreen();
     else document.exitFullscreen();
@@ -81,7 +91,8 @@ Opening in default browser. Then:
   F        fullscreen
   Space    play/pause cycling
   ← / →    previous/next manually
-  Esc      exit
+  Esc      exit fullscreen
+  Cmd-W    close the tab when done
 
 Each color shows for ${SECONDS_PER_COLOR}s when cycling.
 INFO

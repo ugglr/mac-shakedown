@@ -158,11 +158,11 @@ export CHASSIS_CLASS=active-cooled-pro    # or fanless | desktop | intel-laptop 
 ./Verification/scripts/inventory.sh    > Reports/inventory.json
 ./Verification/scripts/battery.sh      > Reports/battery.json
 ./Verification/scripts/cpu-variance.sh > Reports/variance.json
-sudo -E ./Verification/scripts/thermal-load.sh > Reports/thermal.json
+sudo CHASSIS_CLASS="$CHASSIS_CLASS" ./Verification/scripts/thermal-load.sh > Reports/thermal.json
 ./Verification/scripts/display-test.sh
 ```
 
-`sudo -E` preserves the env var across the privilege boundary (otherwise `thermal-load.sh` falls back to `active-cooled-pro` defaults). Then read the values against [Pass-Fail Criteria](Verification/Pass-Fail%20Criteria.md). The agent flow is recommended though — most of the value is in the manual prompts and the cross-referencing against calibration notes.
+The inline `sudo CHASSIS_CLASS=...` form preserves the env var across the privilege boundary regardless of sudoers `env_keep` config (otherwise `thermal-load.sh` falls back to `active-cooled-pro` defaults). Then read the values against [Pass-Fail Criteria](Verification/Pass-Fail%20Criteria.md). The agent flow is recommended though — most of the value is in the manual prompts and the cross-referencing against calibration notes.
 
 ## Roadmap
 

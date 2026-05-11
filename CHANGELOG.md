@@ -46,8 +46,16 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - `examples/m5-max-2026/` → `examples/m5-2026/` (calibration covers M5 / M5 Pro / M5 Max — the Air target preset reuses the same calibration directory).
 - `Verification/Pass-Fail Criteria.md` rewritten with chassis-class threshold tables, compound-warn escalation, the `burst_to_steady_ratio` advisory note, and the SHA-256 workload caveat.
 - README total runtime claim updated: ~45 min on MBP, ~25 min on Air, ~35 min on desktop / Intel (was a flat ~40 min).
-- `AGENTS.md` operating principles expanded to cover `CHASSIS_CLASS` pass-through (with `sudo -E`), rerun-on-warn discipline, and trust-the-data_quality-field guidance.
+- `AGENTS.md` operating principles expanded to cover `CHASSIS_CLASS` pass-through, rerun-on-warn discipline, and trust-the-data_quality-field guidance.
+- **Recommended sudo invocation switched from `sudo -E ./thermal-load.sh` to inline `sudo CHASSIS_CLASS="$CHASSIS_CLASS" ./thermal-load.sh`** across README, AGENTS.md, and Runbook. The `-E` form silently dropped `CHASSIS_CLASS` on default macOS sudoers configs (`env_keep` doesn't list it, admin rules don't grant `SETENV`), falling back to `active-cooled-pro` defaults — wrong thresholds for fanless, desktop, and Intel chassis. The inline form is preserved regardless of sudoers `env_keep`.
+- **Markdown-link CI check rewritten in Python** (`.github/workflows/lint.yml`). The previous bash version used `${path//%/\\x}` URL decoding that works in bash (so CI on `ubuntu-latest` is fine) but produces false positives in zsh — contributors running the check locally on default-shell macOS hit broken-link errors on any path with `%`-encoded characters.
 - Drain framing reconciled across Runbook + Pass-Fail Criteria — both `% remaining` and `% drain` documented for the 30-min idle test.
+
+### Fixed
+
+- **`display-test.sh` Esc handler** now exits fullscreen. Previously called `window.close()`, which silently fails on tabs the user navigated to (rather than ones opened by JS) — the script claimed Esc would exit but it didn't. The page now also documents `Cmd-W` for closing the tab.
+- **`display-test.sh` tempfile handling.** The previous `HTML=$(mktemp -t shakedown-display).html` orphaned a 0-byte mktemp file because BSD `mktemp -t` treats its argument as a literal prefix (the X-template expansion is GNU-only). Now uses `mktemp -d` for a unique directory + fixed `page.html` inside, so the `.html` extension is preserved for `open`'s Safari dispatch.
+- **`display-test.sh` validates `SECONDS_PER_COLOR`** as a positive integer before sed-injecting into the page's JavaScript. Previously a non-numeric value produced broken JS or, in adversarial use, JS injection in the local browser tab.
 
 ### Known limitations (calibration baseline pending)
 

@@ -34,7 +34,7 @@ The name is borrowed from engineering — a *shakedown run* is the first-run str
 
 5. **Pass `CHASSIS_CLASS` to the load tests.** The variance and thermal scripts both accept `CHASSIS_CLASS={fanless|active-cooled-pro|desktop|intel-laptop|intel-desktop}` as an env var; pull it from the target preset's `thermal_chassis_class` field and export before invoking. This sets warmup duration (Phase 4) and thermal thresholds (Phase 5). Default if unset: `active-cooled-pro`.
 
-6. **Sudo once, early.** `thermal-load.sh` needs sudo for `powermetrics`. Prompt the user once at the start of Phase 5 (`sudo -v`), and use `sudo -E ./Verification/scripts/thermal-load.sh` so the `CHASSIS_CLASS` env var crosses the privilege boundary. Don't ask for sudo again mid-run.
+6. **Sudo once, early.** `thermal-load.sh` needs sudo for `powermetrics`. Prompt the user once at the start of Phase 5 (`sudo -v`), and use `sudo CHASSIS_CLASS="$CHASSIS_CLASS" ./Verification/scripts/thermal-load.sh` so the `CHASSIS_CLASS` env var crosses the privilege boundary regardless of sudoers `env_keep` config. Don't ask for sudo again mid-run.
 
 7. **Clear PASS / FAIL.** Final line of the report and final line in chat: `RESULT: PASS` or `RESULT: FAIL — <one-line reason>`. The user is often on a clock. Don't bury the lede.
 
