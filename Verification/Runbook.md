@@ -182,7 +182,7 @@ Frequency cliffs to base clock within 30 s under any chassis are the bad-batch /
 
 This opens an HTML page in the default browser. The agent prompts the user:
 
-> Press **F** to fullscreen, **Space** to start cycling. ← / → to navigate manually. Esc / Cmd-Q to exit.
+> Press **F** to fullscreen, **Space** to start cycling. ← / → to navigate manually. **Esc** exits fullscreen, **Cmd-W** closes the tab when done.
 
 Walk through the colors with the user, asking for each:
 
