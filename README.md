@@ -164,9 +164,32 @@ sudo CHASSIS_CLASS="$CHASSIS_CLASS" ./Verification/scripts/thermal-load.sh > Rep
 
 The inline `sudo CHASSIS_CLASS=...` form preserves the env var across the privilege boundary regardless of sudoers `env_keep` config (otherwise `thermal-load.sh` falls back to `active-cooled-pro` defaults). Then read the values against [Pass-Fail Criteria](Verification/Pass-Fail%20Criteria.md). The agent flow is recommended though — most of the value is in the manual prompts and the cross-referencing against calibration notes.
 
+## Submit a calibration report
+
+The v0.1 thresholds need real-world data to calibrate. If you ran the harness — PASS, WARN, or FAIL — please consider submitting your report. **Especially valuable: known-good machines from someone you trust**, which is what the methodology currently lacks.
+
+There's no hosted backend; submissions land via PR.
+
+```bash
+./Verification/scripts/run-shakedown.sh --target mbp-16-m5-max-64
+```
+
+The orchestrator runs the auto-runnable phases (preflight → inventory → battery → CPU variance → thermal load), aggregates into a SCHEMA-compliant JSON, and writes two copies:
+
+- `Reports/local/<filename>.json` — full output, **gitignored** (keeps `_raw_*` debug fields)
+- `Reports/submissions/<filename>.json` — sanitized for PR submission
+
+To submit:
+
+1. Skim the submission JSON for any leftover PII.
+2. `git checkout -b submit-<your-date> && git add Reports/submissions/<filename>.json && git commit -m "submission: <chassis> <chip> <verdict>"`
+3. Open a PR. CI runs the submission audit (rejects `_raw_*` leakage, plaintext serials, malformed schema, off-pattern filenames).
+
+The manual phases (display, physical inspection, Apple Diagnostics, idle drain) are emitted as `skipped` placeholders. If you ran any of them, hand-edit `Reports/local/<filename>.json`, re-sanitize, and overwrite the submission copy before opening the PR.
+
 ## Roadmap
 
-- **Hosted aggregator.** Submit your `Reports/<ts>.json` to a public site for crowd-sourced baselines per generation. Once we have N submissions from known-good units, the "baseline TBD" caveat in the variance test goes away — the per-SKU reference distribution comes from real data, and your unit's PASS/FAIL is contextualized against units of the same chip + memory + perf-cores. (See [`Reports/SCHEMA.md`](Reports/SCHEMA.md) — reports are designed for opt-in submission.)
+- **Hosted aggregator.** Eventually, submission via API to a public site so reports aren't reviewed by hand. Until then, the PR-submission flow above *is* the aggregator — slower but no infra, and PR review catches PII before merge.
 - **Non-accelerated workload pass.** Optional Phase 4b that runs a workload without hardware acceleration (e.g. unaccelerated AES, BLAKE2b in pure Python, or a pinned matrix-multiply kernel) so the test stresses integer pipelines and memory bandwidth too. Catches batch defects that don't show up under SHA-NI / Apple Silicon's crypto engines.
 - **GPU variance test.** Currently CPU-only. M5 Max GPU is the bigger thermal contributor and a Metal compute load would be much more aggressive than CPU SHA-256.
 - **NVMe SSD performance.** Currently we only check SMART status — Apple has shipped 256 GB single-die SSD perf regressions on past gens, worth catching.

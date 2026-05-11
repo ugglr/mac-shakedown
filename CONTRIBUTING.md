@@ -74,6 +74,16 @@ When the methodology changes:
 - Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under the Unreleased section calling out the comparability impact.
 - If the change affects how reports compare across submissions (e.g. new metric, threshold tightening), call it out explicitly so the future aggregator can bucket old vs. new submissions.
 
-## Reports submission (future)
+## Submitting a calibration report
 
-A planned hosted aggregator will accept opt-in submissions of `Reports/<ts>.json` to build crowd-sourced baselines per generation. Until that lands, the JSON format is the API contract — keep it stable, version it, and don't break old reports.
+Until a hosted aggregator exists, the calibration corpus grows via PRs to `Reports/submissions/`. The orchestrator at `Verification/scripts/run-shakedown.sh` produces a sanitized submission JSON in the predictable filename convention (`{YYYY-MM-DD}-{preset}-{hash4}.json`); add that file in a PR.
+
+What to expect:
+
+1. **CI runs a submission audit** on any PR touching `Reports/submissions/**` — fails the PR if it sees `_raw_*` fields, a plaintext serial, an off-pattern filename, `submission_safe != true`, or missing SCHEMA-required fields.
+2. **Reviewer checks for PII** beyond what CI catches (free-form notes, store location, etc. — the orchestrator never writes these unless you pass `--notes`).
+3. **Merge** — your report lives in-repo, dated and attributable to your PR.
+
+Known-good (PASS) submissions are currently the most valuable: the v0.1 thresholds were derived from public reports rather than measured baselines, and a few clean runs from trusted submitters let us tighten "presumed-good" into "calibrated."
+
+The JSON format is the API contract — keep it stable, version it (`Reports/SCHEMA.md`), and don't break old reports.

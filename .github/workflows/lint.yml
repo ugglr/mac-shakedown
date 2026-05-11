@@ -47,6 +47,97 @@ jobs:
             python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$py"
           done
 
+      - name: Audit Reports/submissions/*.json for PII and schema shape
+        # Walks Reports/submissions/*.json. Each file must:
+        #   - have a filename matching {YYYY-MM-DD}-{preset}-{hash4}.json
+        #   - contain all SCHEMA.md top-level fields (schema_version, target, unit, phases, result, …)
+        #   - have submission_safe: true
+        #   - contain NO _raw_* fields anywhere (would leak SSIDs / paired BT IDs / USB serials)
+        #   - contain NO raw_log_path (thermal-load.sh's tempfile pointer)
+        #   - contain NO unit.serial_number (only serial_hash is allowed)
+        # Skips silently if no submission files exist (the directory is empty for non-submission PRs).
+        run: |
+          python3 <<'PYEOF'
+          import glob
+          import json
+          import os
+          import re
+          import sys
+
+          REQUIRED_TOP = ["schema_version", "shakedown_version", "timestamp",
+                          "target", "unit", "phases", "result", "result_reason",
+                          "submission_safe"]
+          REQUIRED_PHASES = ["0_preflight", "1_inventory", "2_battery", "3_sensors",
+                              "4_cpu_variance", "5_thermal_load", "6_display",
+                              "7_physical", "8_apple_diagnostics", "9_idle_drain"]
+          FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+-[0-9a-f]{4}\.json$")
+
+          def find_keys(obj, predicate, path=""):
+              hits = []
+              if isinstance(obj, dict):
+                  for k, v in obj.items():
+                      sub = f"{path}.{k}" if path else k
+                      if predicate(k):
+                          hits.append(sub)
+                      hits.extend(find_keys(v, predicate, sub))
+              elif isinstance(obj, list):
+                  for i, v in enumerate(obj):
+                      hits.extend(find_keys(v, predicate, f"{path}[{i}]"))
+              return hits
+
+          errors = []
+          files = sorted(glob.glob("Reports/submissions/*.json"))
+          if not files:
+              print("no submission files; nothing to audit")
+              sys.exit(0)
+
+          for path in files:
+              name = os.path.basename(path)
+              if not FILENAME_RE.match(name):
+                  errors.append(f"{path}: filename does not match {{YYYY-MM-DD}}-{{preset}}-{{hash4}}.json")
+                  continue
+              try:
+                  with open(path) as f:
+                      report = json.load(f)
+              except json.JSONDecodeError as e:
+                  errors.append(f"{path}: invalid JSON: {e}")
+                  continue
+
+              for field in REQUIRED_TOP:
+                  if field not in report:
+                      errors.append(f"{path}: missing required top-level field '{field}'")
+
+              phases = report.get("phases", {})
+              for p in REQUIRED_PHASES:
+                  if p not in phases:
+                      errors.append(f"{path}: missing required phase '{p}'")
+
+              if report.get("submission_safe") is not True:
+                  errors.append(f"{path}: submission_safe must be true (got {report.get('submission_safe')!r})")
+
+              raw_keys = find_keys(report, lambda k: k.startswith("_raw_"))
+              for k in raw_keys:
+                  errors.append(f"{path}: forbidden _raw_* field at '{k}' (may contain SSIDs/paired BT IDs)")
+
+              raw_log = find_keys(report, lambda k: k == "raw_log_path")
+              for k in raw_log:
+                  errors.append(f"{path}: forbidden 'raw_log_path' field at '{k}'")
+
+              unit = report.get("unit", {})
+              if "serial_number" in unit:
+                  errors.append(f"{path}: forbidden unit.serial_number (only serial_hash is allowed)")
+
+              if report.get("result") not in ("PASS", "FAIL"):
+                  errors.append(f"{path}: result must be 'PASS' or 'FAIL' (got {report.get('result')!r})")
+
+          if errors:
+              print("Submission audit failed:", file=sys.stderr)
+              for e in errors:
+                  print(f"  - {e}", file=sys.stderr)
+              sys.exit(1)
+          print(f"audited {len(files)} submission file(s) — all clean")
+          PYEOF
+
       - name: Verify markdown links resolve to existing files
         # Walk every in-repo .md, parse ](relative/path) links, confirm each
         # resolves to a file on disk. Skips http(s)://, mailto:, and

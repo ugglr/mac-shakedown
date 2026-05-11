@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added — calibration submission workflow
+
+- **`run-shakedown.sh` orchestrator** — wraps the four auto-runnable phases (inventory, battery, CPU variance, thermal load) end-to-end, prompts sudo upfront, aggregates into a SCHEMA-compliant JSON, and emits a sanitized submission copy alongside the full local copy. One command instead of five-plus, with the predictable `{YYYY-MM-DD}-{preset}-{hash4}.json` filename convention.
+- **`Reports/local/` vs `Reports/submissions/` split** — full output with `_raw_*` debug fields stays gitignored; sanitized copy is committable as a PR. Plaintext serials never reach the submission copy, even with `INCLUDE_PLAINTEXT_SERIAL=1`.
+- **CI submission audit** — new step in `.github/workflows/lint.yml` triggered on PRs touching `Reports/submissions/**`. Rejects any `_raw_*` field, `raw_log_path`, plaintext `serial_number`, off-pattern filename, missing SCHEMA fields, or `submission_safe != true`.
+- **README "Submit a calibration report" section** + CONTRIBUTING.md submission flow + PR-template checkbox for calibration submissions. Until a hosted aggregator exists, PRs are how the calibration corpus grows.
+- **Soft inventory assert for `model_must_include`** — Apple Silicon's `machine_model` (e.g. `Mac17,1`) doesn't reliably contain the screen-size substring, so a mismatch now warns rather than fails. Chip and memory remain hard asserts (those are reliable from `system_profiler`).
+
 ### Added — methodology hardening
 
 - **Phase 4 cold burst measurement** — first 5 s of parallel SHA-256 captured before warmup heats the chassis. Burst figure recorded as `burst_throughput_mb_per_s` for diagnostic comparison against the steady-state mean (advisory; doesn't drive verdict without a calibration baseline).
