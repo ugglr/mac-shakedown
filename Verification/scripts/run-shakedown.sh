@@ -33,12 +33,17 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<HELP
-Usage: $(basename "$0") --target <preset> [--notes "free-form notes"]
+Usage: $(basename "$0") [--target <preset>] [--notes "free-form notes"]
 
-  --target <preset>   required. Target preset name (file under targets/ without .json)
-                      e.g. mbp-16-m5-max-64, macbook-air-m5-16, mbp-16-intel-2019
+  --target <preset>   optional. Target preset name (file under targets/ without .json)
+                      e.g. mbp-16-m5-max-64, macbook-air-m5-16, mbp-16-intel-2019.
+                      Without a target, inventory asserts are skipped — useful for
+                      Macs that don't yet have a preset.
   --notes "..."       optional free-form note to embed in the report. Setting any
                       note flips submission_safe to false (notes may contain PII).
+
+Chassis class: read from the preset when --target is given; otherwise
+auto-detected from system_profiler (override with CHASSIS_CLASS env var).
 HELP
       exit 0
       ;;
@@ -49,19 +54,14 @@ HELP
   esac
 done
 
-if [[ -z "$TARGET" ]]; then
-  echo "run-shakedown.sh: --target is required (see targets/README.md)" >&2
-  echo "  e.g. $(basename "$0") --target mbp-16-m5-max-64" >&2
-  exit 2
-fi
-
-TARGET_FILE="$REPO_ROOT/targets/$TARGET.json"
-if [[ ! -f "$TARGET_FILE" ]]; then
-  echo "run-shakedown.sh: target preset not found: $TARGET_FILE" >&2
-  exit 2
-fi
-
-CHASSIS_CLASS=$(python3 - "$TARGET_FILE" <<'PYEOF'
+TARGET_FILE=""
+if [[ -n "$TARGET" ]]; then
+  TARGET_FILE="$REPO_ROOT/targets/$TARGET.json"
+  if [[ ! -f "$TARGET_FILE" ]]; then
+    echo "run-shakedown.sh: target preset not found: $TARGET_FILE" >&2
+    exit 2
+  fi
+  CHASSIS_CLASS=$(python3 - "$TARGET_FILE" <<'PYEOF'
 import json
 import sys
 with open(sys.argv[1]) as f:
@@ -69,9 +69,41 @@ with open(sys.argv[1]) as f:
 print(d.get("thermal_chassis_class", "active-cooled-pro"))
 PYEOF
 )
+elif [[ -z "${CHASSIS_CLASS:-}" ]]; then
+  # No target and no override — auto-detect chassis from machine_name.
+  # Mac Pro (Intel desktop) and MacBook Pro both contain "Pro"; check for
+  # the MacBook prefix first so Mac Pro doesn't get misclassified as a laptop.
+  CHASSIS_CLASS=$(python3 <<'PYEOF'
+import json
+import subprocess
+import sys
+try:
+    sp = json.loads(subprocess.check_output(
+        ["system_profiler", "-json", "SPHardwareDataType"],
+        stderr=subprocess.DEVNULL,
+    ))
+    hw = sp["SPHardwareDataType"][0]
+except Exception:
+    sys.exit(1)
+model = hw.get("machine_name") or ""
+is_apple_silicon = bool(hw.get("chip_type"))
+is_laptop = "MacBook" in model
+if is_apple_silicon:
+    print("fanless" if (is_laptop and "Air" in model) else
+          "active-cooled-pro" if is_laptop else "desktop")
+else:
+    print("intel-laptop" if is_laptop else "intel-desktop")
+PYEOF
+) || {
+    echo "run-shakedown.sh: could not auto-detect chassis class." >&2
+    echo "  Set CHASSIS_CLASS env var explicitly:" >&2
+    echo "  fanless | active-cooled-pro | desktop | intel-laptop | intel-desktop" >&2
+    exit 2
+  }
+fi
 export CHASSIS_CLASS
 
-echo "shakedown: target=$TARGET chassis_class=$CHASSIS_CLASS"
+echo "shakedown: target=${TARGET:-<none>} chassis_class=$CHASSIS_CLASS"
 echo "shakedown: requesting sudo upfront (thermal phase needs it)"
 sudo -v
 
@@ -142,7 +174,7 @@ def load(path):
     with open(path) as f:
         return json.load(f)
 
-target = load(target_file)
+target = load(target_file) if target_file else None
 inventory = load(inv_path)
 battery = load(bat_path)
 variance = load(var_path)
@@ -186,34 +218,41 @@ mem_gb = inv_summary.get("memory_gb")
 # field depending on generation (Intel "MacBookPro16,1" vs Apple Silicon "Mac17,1").
 model_haystack = " ".join(filter(None, [inv_summary.get("model"), inv_summary.get("model_identifier")]))
 
-inv_asserts = {
-    "chip_pattern_matched": bool(target.get("chip_pattern") and target["chip_pattern"] in chip),
-    "memory_gb_matched": (target.get("memory_gb") is None) or (target.get("memory_gb") == mem_gb),
-    "model_must_include_matched": bool(target.get("model_must_include") and target["model_must_include"] in model_haystack),
-}
 ssd_smart = None
 for s in inventory.get("storage", []) or []:
     if s.get("smart"):
         ssd_smart = s["smart"]
         break
-if ssd_smart:
-    inv_asserts["ssd_smart"] = ssd_smart
 
 inv_verdict = "pass"
 inv_reasons = []
-if not inv_asserts["chip_pattern_matched"]:
-    inv_verdict = "fail"
-    inv_reasons.append(f"chip '{chip}' does not contain target pattern '{target.get('chip_pattern')}'")
-if not inv_asserts["memory_gb_matched"]:
-    inv_verdict = "fail"
-    inv_reasons.append(f"memory {mem_gb} GB does not match target {target.get('memory_gb')} GB")
-if not inv_asserts["model_must_include_matched"]:
-    if inv_verdict == "pass":
-        inv_verdict = "warn"
-    inv_reasons.append(
-        f"model '{model_haystack}' does not include target substring '{target.get('model_must_include')}' "
-        f"— system_profiler does not reliably expose screen size on Apple Silicon; verify manually"
-    )
+inv_asserts = {}
+
+if target:
+    inv_asserts = {
+        "chip_pattern_matched": bool(target.get("chip_pattern") and target["chip_pattern"] in chip),
+        "memory_gb_matched": (target.get("memory_gb") is None) or (target.get("memory_gb") == mem_gb),
+        "model_must_include_matched": bool(target.get("model_must_include") and target["model_must_include"] in model_haystack),
+    }
+    if ssd_smart:
+        inv_asserts["ssd_smart"] = ssd_smart
+    if not inv_asserts["chip_pattern_matched"]:
+        inv_verdict = "fail"
+        inv_reasons.append(f"chip '{chip}' does not contain target pattern '{target.get('chip_pattern')}'")
+    if not inv_asserts["memory_gb_matched"]:
+        inv_verdict = "fail"
+        inv_reasons.append(f"memory {mem_gb} GB does not match target {target.get('memory_gb')} GB")
+    if not inv_asserts["model_must_include_matched"]:
+        if inv_verdict == "pass":
+            inv_verdict = "warn"
+        inv_reasons.append(
+            f"model '{model_haystack}' does not include target substring '{target.get('model_must_include')}' "
+            f"— system_profiler does not reliably expose screen size on Apple Silicon; verify manually"
+        )
+else:
+    inv_asserts = {"ran_without_target": True, "ssd_smart": ssd_smart}
+    inv_reasons.append("no target preset specified — recorded actual values without asserting")
+
 if ssd_smart and ssd_smart != "Verified":
     inv_verdict = "fail"
     inv_reasons.append(f"SSD SMART status '{ssd_smart}' (expected 'Verified')")
@@ -224,24 +263,29 @@ condition = battery.get("condition")
 
 bat_verdict = "pass"
 bat_reasons = []
-if isinstance(cycle, int) and cycle > 5:
-    bat_verdict = "fail"
-    bat_reasons.append(f"cycle_count {cycle} > 5 — likely a returned/refurb unit, not new-from-factory")
-elif isinstance(cycle, int) and cycle > 1:
-    bat_verdict = "warn"
-    bat_reasons.append(f"cycle_count {cycle} above the typical factory range (0–1)")
+# Cycle count + "below 99%" warn assume a new-from-factory unit; only apply
+# them when --target is given (signals "I'm verifying a new purchase").
+# Real-degradation checks (<95% capacity, abnormal condition) apply either way.
+if target:
+    if isinstance(cycle, int) and cycle > 5:
+        bat_verdict = "fail"
+        bat_reasons.append(f"cycle_count {cycle} > 5 — likely a returned/refurb unit, not new-from-factory")
+    elif isinstance(cycle, int) and cycle > 1:
+        bat_verdict = "warn"
+        bat_reasons.append(f"cycle_count {cycle} above the typical factory range (0–1)")
+    if isinstance(max_pct, (int, float)) and max_pct < 99 and (not isinstance(max_pct, (int, float)) or max_pct >= 95):
+        bat_verdict = "warn"
+        bat_reasons.append(f"max_capacity_pct {max_pct}% below the 99% expected on a new unit")
+elif isinstance(cycle, int):
+    bat_reasons.append(f"cycle_count {cycle} (informational — no target, factory-fresh check skipped)")
 if isinstance(max_pct, (int, float)) and max_pct < 95:
     bat_verdict = "fail"
     bat_reasons.append(f"max_capacity_pct {max_pct}% < 95%")
-elif isinstance(max_pct, (int, float)) and max_pct < 99:
-    if bat_verdict == "pass":
-        bat_verdict = "warn"
-    bat_reasons.append(f"max_capacity_pct {max_pct}% below the 99% expected on a new unit")
 if condition and condition != "Normal":
     bat_verdict = "fail"
     bat_reasons.append(f"battery condition '{condition}' (expected 'Normal')")
 if not bat_reasons:
-    bat_reasons.append("battery within new-unit range")
+    bat_reasons.append("battery healthy")
 
 battery_details = {k: v for k, v in battery.items() if not k.startswith("_") and k != "battery_serial"}
 
@@ -359,8 +403,15 @@ else:
     result = "PASS"
     result_reason = "all phases passed; no defect signatures detected"
 
-target_block = {"preset": target_name}
-target_block.update({k: v for k, v in target.items() if not k.startswith("_")})
+if target:
+    target_block = {"preset": target_name}
+    target_block.update({k: v for k, v in target.items() if not k.startswith("_")})
+else:
+    target_block = {
+        "preset": None,
+        "thermal_chassis_class": variance.get("chassis_class"),
+        "note": "ran without --target — inventory asserts skipped",
+    }
 
 report_full = {
     "schema_version": SCHEMA_VERSION,
@@ -386,7 +437,13 @@ date_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 serial_hash = inv_summary.get("serial_hash") or ""
 m = re.search(r"sha256:([0-9a-f]{4,})", serial_hash)
 hash4 = m.group(1)[:4] if m else "xxxx"
-filename = f"{date_str}-{target_name}-{hash4}.json"
+if target_name:
+    slug = target_name
+else:
+    chassis_slug = variance.get("chassis_class") or "unknown"
+    mem_slug = f"{mem_gb}gb" if mem_gb else "unknown"
+    slug = f"{chassis_slug}-{mem_slug}"
+filename = f"{date_str}-{slug}-{hash4}.json"
 local_path = os.path.join(local_dir, filename)
 submission_path = os.path.join(submissions_dir, filename)
 

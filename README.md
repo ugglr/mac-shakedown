@@ -174,6 +174,14 @@ There's no hosted backend; submissions land via PR.
 ./Verification/scripts/run-shakedown.sh --target mbp-16-m5-max-64
 ```
 
+Or without a preset (for Macs that don't have one yet, or existing units you're self-testing rather than verifying as new):
+
+```bash
+./Verification/scripts/run-shakedown.sh
+```
+
+Without `--target`, chassis class is auto-detected from `system_profiler` (override with `CHASSIS_CLASS=intel-laptop ./Verification/scripts/run-shakedown.sh`), and the inventory + "is this factory-fresh?" battery asserts are skipped — real-degradation signals (battery capacity < 95%, abnormal condition, SSD SMART status) still fail the run.
+
 The orchestrator runs the auto-runnable phases (preflight → inventory → battery → CPU variance → thermal load), aggregates into a SCHEMA-compliant JSON, and writes two copies:
 
 - `Reports/local/<filename>.json` — full output, **gitignored** (keeps `_raw_*` debug fields)
