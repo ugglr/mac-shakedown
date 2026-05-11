@@ -11,14 +11,10 @@ if ! [[ "$SECONDS_PER_COLOR" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 
-# BSD mktemp -t treats its arg as a literal prefix and appends 8 random chars
-# at the end — so `mktemp -t shakedown-display.XXXXXX.html` would produce a
-# path ending in `.html.AbC12345`, breaking `open`'s extension-based dispatch
-# to Safari. Use `mktemp -d` instead so we control the extension on the
-# inner filename.
-TMPDIR_DISPLAY=$(mktemp -d -t shakedown-display) || exit 1
+# Use mktemp -d so we control the .html extension; BSD mktemp -t treats
+# its arg as a literal prefix and appends random chars at the end.
+TMPDIR_DISPLAY=$(mktemp -d -t shakedown-display)
 HTML="$TMPDIR_DISPLAY/page.html"
-trap 'rm -rf "$TMPDIR_DISPLAY"' EXIT INT TERM
 
 # Heredoc with no expansion, then sed in the duration
 cat > "$HTML" <<'HTML'
@@ -102,6 +98,3 @@ Each color shows for ${SECONDS_PER_COLOR}s when cycling.
 INFO
 
 open "$HTML"
-# `open` returns immediately; give Safari a moment to read the file
-# before the EXIT trap removes it.
-sleep 2
