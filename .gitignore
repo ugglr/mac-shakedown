@@ -3,6 +3,7 @@
 .obsidian/cache
 .obsidian/graph.json
 .claude/settings.local.json
+.claude/worktrees/
 
 # Run outputs (may contain serials, system info)
 Reports/*
