@@ -150,11 +150,11 @@ Requires sudo for `powermetrics`. Prompt for sudo once:
 
 ```bash
 sudo -v
-CHASSIS_CLASS=active-cooled-pro \
-  sudo -E ./Verification/scripts/thermal-load.sh > Reports/<ts>-raw/thermal.json
+sudo CHASSIS_CLASS=active-cooled-pro \
+  ./Verification/scripts/thermal-load.sh > Reports/<ts>-raw/thermal.json
 ```
 
-`CHASSIS_CLASS` selects the threshold table (matches the same env var as Phase 4). Default: `active-cooled-pro`. Use `sudo -E` so the chassis class env var crosses the privilege boundary.
+`CHASSIS_CLASS` selects the threshold table (matches the same env var as Phase 4). Default: `active-cooled-pro`. The inline `sudo CHASSIS_CLASS=...` form is preserved across the privilege boundary regardless of sudoers `env_keep` config.
 
 Default: 10 minutes of continuous parallel hashing, with `powermetrics` sampling every 5 s (`smc` and `cpu_power` samplers). The script writes its own verdict per the chassis-class table in `thermal-load.sh` (mirrors [Pass-Fail Criteria](Pass-Fail%20Criteria.md)).
 
