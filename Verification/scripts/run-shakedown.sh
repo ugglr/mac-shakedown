@@ -132,6 +132,48 @@ ignite() {
   printf '%s%s██  %s%s\n' "$cl" "$B" "$label" "$X" >&2
 }
 
+heartbeat() {
+  # Background sparks during silent stretches (Phase 4 warmup, Phase 5 sustained
+  # load). Sparse and varied, prints to stderr without \r so it doesn't fight
+  # with the sub-script's own progress prints. Suppressed when not a TTY.
+  if [[ ! -t 2 ]]; then return; fi
+  local Y=$'\033[93m'
+  local O=$'\033[33m'
+  local R=$'\033[91m'
+  local X=$'\033[0m'
+  local sparks=(
+    "${Y}    *   .  ✦${X}"
+    "${O}  ·    *   ${X}"
+    "${R}    ✦   ·  ${X}"
+    "${Y}  ·   .  *  ${X}"
+    "${O}    ·   ·   ${X}"
+    "${R}   *  ✦    ·${X}"
+    "${Y}  ✦   ·  *  ${X}"
+    "${O}    ·     . ${X}"
+  )
+  local i=0
+  while true; do
+    sleep $(( 10 + RANDOM % 8 ))   # 10–17 seconds between sparks
+    kill -0 "$$" 2>/dev/null || exit
+    printf '  %s\n' "${sparks[i % ${#sparks[@]}]}" >&2
+    i=$((i + 1))
+  done
+}
+
+start_heartbeat() {
+  if [[ ! -t 2 ]]; then return; fi
+  heartbeat &
+  HEARTBEAT_PID=$!
+}
+
+stop_heartbeat() {
+  if [[ -n "${HEARTBEAT_PID:-}" ]]; then
+    kill "$HEARTBEAT_PID" 2>/dev/null || true
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+    HEARTBEAT_PID=""
+  fi
+}
+
 banner() {
   if [[ ! -t 2 ]]; then return; fi
   local Y=$'\033[93m'      # bright yellow (wisps)
@@ -205,7 +247,8 @@ if [[ "$NO_SUDO" -ne 1 ]]; then
 fi
 
 WORK=$(mktemp -d -t shakedown-run)
-trap 'if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true; fi; rm -rf "$WORK"' EXIT
+HEARTBEAT_PID=""
+trap 'if [[ -n "$HEARTBEAT_PID" ]]; then kill "$HEARTBEAT_PID" 2>/dev/null || true; fi; if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true; fi; rm -rf "$WORK"' EXIT
 
 PREFLIGHT_TXT="$WORK/preflight.txt"
 INVENTORY_JSON="$WORK/inventory.json"
@@ -232,7 +275,9 @@ ignite "Phase 2 — battery"
 "$SCRIPT_DIR/battery.sh" > "$BATTERY_JSON"
 
 ignite "Phase 4 — CPU variance (~6-10 min depending on chassis)"
+start_heartbeat
 "$SCRIPT_DIR/cpu-variance.sh" > "$VARIANCE_JSON"
+stop_heartbeat
 
 if [[ "$NO_SUDO" -eq 1 ]]; then
   ignite "Phase 5 — skipped (--no-sudo)"
@@ -241,8 +286,10 @@ if [[ "$NO_SUDO" -eq 1 ]]; then
 EOF
 else
   ignite "Phase 5 — sustained thermal load (~10 min, needs sudo)"
+  start_heartbeat
   # shellcheck disable=SC2024  # the redirect target is a user-owned tempdir, not privileged.
   sudo CHASSIS_CLASS="$CHASSIS_CLASS" "$SCRIPT_DIR/thermal-load.sh" > "$THERMAL_JSON"
+  stop_heartbeat
 fi
 
 echo "shakedown: aggregating into canonical report"
