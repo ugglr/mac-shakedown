@@ -4,7 +4,7 @@
 
 ## Type of change
 
-- [ ] **Calibration report submission** (`Reports/submissions/*.json` — see below)
+- [ ] **Calibration report submission** (`Reports/submissions/*.json`; see below)
 - [ ] Target preset (`targets/*.json`)
 - [ ] Generation calibration (`examples/<gen>-<year>/`)
 - [ ] Script improvement (`Verification/scripts/`)

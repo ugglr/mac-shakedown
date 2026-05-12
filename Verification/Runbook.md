@@ -9,29 +9,29 @@ The procedure for each verification phase. Phases 0–5 are automated by [`./run
 
 **Total time:** ~45 min on a MacBook Pro, ~25 min on a fanless Air, ~35 min on a desktop or Intel Mac, +30 min if you opt into the idle-drain test.
 
-> **Target preset.** Pass `--target <name>` to assert the unit matches the preset in `targets/<name>.json`. Without `--target`, the inventory asserts are skipped — useful for Macs that don't yet have a preset, or for self-testing an existing unit.
+> **Target preset.** Pass `--target <name>` to assert the unit matches the preset in `targets/<name>.json`. Without `--target`, the inventory asserts are skipped. Useful for Macs that don't yet have a preset, or for self-testing an existing unit.
 
-## Phase 0 — Pre-flight (1 min)
+## Phase 0: Pre-flight (1 min)
 
 **Goal:** confirm the Mac is set up and the system is quiet enough for the benchmarks to be meaningful.
 
 - Mac is signed into a user account (not stuck in setup flow).
 - Connected to Wi-Fi.
-- Plug in the charger — most tests want AC power.
+- Plug in the charger. Most tests want AC power.
 - Note the date/time, store location, and serial number of the unit being tested.
 
-**System quiet check** — background load skews the variance test. Confirm before Phase 4:
+**System quiet check.** Background load skews the variance test. Confirm before Phase 4:
 
 ```bash
 uptime                              # load averages
 top -l 1 -n 5 -o cpu | tail -7      # top 5 CPU processes
 ```
 
-The 1-minute load average should be well under the P-core count. The top-5 list should be near-zero CPU% for everything except WindowServer and `top` itself. If any non-system process is using > 5% CPU, close it before continuing — it will steal P-cores from the benchmark and produce iteration-to-iteration noise that looks like a bad-batch signature.
+The 1-minute load average should be well under the P-core count. The top-5 list should be near-zero CPU% for everything except WindowServer and `top` itself. If any non-system process is using > 5% CPU, close it before continuing. It will steal P-cores from the benchmark and produce iteration-to-iteration noise that looks like a bad-batch signature.
 
 On a brand-new out-of-box Mac this is automatic. On a Mac that's been used for a while, kill: browsers, IDEs, Docker, Spotlight indexer (if mid-index), iCloud sync, Time Machine.
 
-## Phase 1 — Hardware inventory (instant)
+## Phase 1: Hardware inventory (instant)
 
 **Goal:** assert the unit matches the **target**.
 
@@ -39,7 +39,7 @@ On a brand-new out-of-box Mac this is automatic. On a Mac that's been used for a
 ./Verification/scripts/inventory.sh > Reports/<ts>-raw/inventory.json
 ```
 
-Parse and check from the `summary` field — assertions come from the loaded target:
+Parse and check from the `summary` field. Assertions come from the loaded target:
 
 | Target field | Asserted against |
 |---|---|
@@ -49,11 +49,11 @@ Parse and check from the `summary` field — assertions come from the loaded tar
 
 If the user opted out of a target, **skip assertions** and just record the actual values.
 
-**Stop the run** if any assertion fails. Ask the user before continuing — they may be verifying a different SKU than they thought, or the wrong unit was handed to them.
+**Stop the run** if any assertion fails. Ask the user before continuing. They may be verifying a different SKU than they thought, or the wrong unit was handed to them.
 
 Also record (informational, no assertion): perf_cores, efficiency_cores, SSD model + capacity, macOS version, serial number (will be hashed for the report).
 
-## Phase 2 — Battery health (instant)
+## Phase 2: Battery health (instant)
 
 **Goal:** confirm a fresh, healthy battery.
 
@@ -69,7 +69,7 @@ Check:
 
 A new unit should be 0 cycles or possibly 1 from factory testing. > 5 cycles is a strong signal it's a returned/refurb unit, regardless of the box's "new" label.
 
-## Phase 3 — Sensor & port inventory (instant — uses Phase 1's output)
+## Phase 3: Sensor & port inventory (instant; uses Phase 1's output)
 
 **Goal:** confirm all hardware advertised by the unit's own report is detected.
 
@@ -85,11 +85,11 @@ Then check the unit-reports lines up with the form-factor expectations:
 - MacBook Pro 14"/16": 3 × Thunderbolt, HDMI, SDXC, MagSafe
 - MacBook Pro 14" base: as above but 2 × Thunderbolt
 - MacBook Air: 2 × Thunderbolt, MagSafe (no HDMI/SDXC)
-- Mac mini / Studio: varies — record what's reported, no specific count assertion
+- Mac mini / Studio: varies. Record what's reported, no specific count assertion.
 
 Anything advertised by Apple for that model but missing from the unit's report is a likely electrical / firmware issue. Surface to user.
 
-## Phase 4 — CPU performance variance test (~10 min on Pro, ~6 min on Air)
+## Phase 4: CPU performance variance test (~10 min on Pro, ~6 min on Air)
 
 **Goal:** detect batch-level performance variance / hot-spot throttling. **The headline test.** See the calibration's relevant note (e.g. [Performance Variance](../examples/m5-2026/Issues/Performance%20Variance.md) for the M5 generation) for the documented defect this test catches.
 
@@ -102,25 +102,25 @@ CHASSIS_CLASS=active-cooled-pro \
 
 The test has three phases internal to the script:
 
-1. **5 s cold burst** of parallel SHA-256 — captures peak boost throughput before the chassis heats up. Recorded as `burst_throughput_mb_per_s` for diagnostic comparison against the steady-state mean.
-2. **Warmup** of continuous load — drives the chassis to thermal equilibrium so the timed iterations all measure steady-state behavior. Default depends on chassis:
+1. **5 s cold burst** of parallel SHA-256. Captures peak boost throughput before the chassis heats up. Recorded as `burst_throughput_mb_per_s` for diagnostic comparison against the steady-state mean.
+2. **Warmup** of continuous load. Drives the chassis to thermal equilibrium so the timed iterations all measure steady-state behavior. Default depends on chassis:
 	- `active-cooled-pro`: 300 s (16" MBP saturation is 5–8 min; 90 s would leave iteration 1 still riding the heating curve)
 	- `fanless`: 60 s
 	- `desktop` / `intel-laptop` / `intel-desktop`: 180 s
-3. **5 × 60 s timed iterations** — measure aggregate throughput (MB/s) on the saturated chassis.
+3. **5 × 60 s timed iterations** that measure aggregate throughput (MB/s) on the saturated chassis.
 
 Total: ~10 min on Pro, ~6 min on Air, ~8 min on desktop / Intel. For a more thorough run:
 `WARMUP_SEC=420 SECONDS_PER_ITER=90 ITERATIONS=5 ./Verification/scripts/cpu-variance.sh` (~15 min).
 
-Why the long warmup matters: on a cold chassis, iteration 1 is necessarily faster than iteration 5 just because thermal mass is filling up — even a healthy unit. Warmup puts every iteration on the same thermal footing so the variance metrics measure *unit defect*, not test artifact.
+Why the long warmup matters: on a cold chassis, iteration 1 is necessarily faster than iteration 5 just because thermal mass is filling up, even on a healthy unit. Warmup puts every iteration on the same thermal footing so the variance metrics measure *unit defect*, not test artifact.
 
-> **Workload caveat.** SHA-256 is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. The test stresses thermal saturation and scheduling consistency — but not the integer pipelines or memory bandwidth that Cinebench would. Public reports of M5 Max bad batches came from Cinebench/Geekbench; this test catches *correlated* signals (variance + thermal behavior) but isn't 1:1 with their workload. A non-accelerated workload pass is on the [roadmap](../README.md#roadmap).
+> **Workload caveat.** SHA-256 is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. The test stresses thermal saturation and scheduling consistency, but not the integer pipelines or memory bandwidth that Cinebench would. Public reports of M5 Max bad batches came from Cinebench/Geekbench; this test catches *correlated* signals (variance + thermal behavior) but isn't 1:1 with their workload. A non-accelerated workload pass is on the [roadmap](../README.md#roadmap).
 
 Check from the JSON:
-- `spread_pct` ((max − min) / mean × 100) — pass < 5%, warn 5–10%, fail > 10%
-- `max_to_min_ratio` — pass < 1.2×, warn 1.2–1.4×, fail ≥ 1.4× (catches single-iteration cliffs)
-- `early_vs_late_decline_pct` — pass < 5%, warn 5–10%, fail > 10% (signature of a hot spot reaching threshold mid-test, which `spread_pct` can miss if decline is monotonic)
-- `burst_to_steady_ratio` — *advisory only*. Recorded for comparison against the calibration baseline; the script does NOT change verdict from this. A ratio close to 1.0 on `active-cooled-pro` may indicate "always-throttled" but on `fanless` and `desktop` it's normal.
+- `spread_pct` ((max − min) / mean × 100): pass < 5%, warn 5–10%, fail > 10%
+- `max_to_min_ratio`: pass < 1.2×, warn 1.2–1.4×, fail ≥ 1.4× (catches single-iteration cliffs)
+- `early_vs_late_decline_pct`: pass < 5%, warn 5–10%, fail > 10% (signature of a hot spot reaching threshold mid-test, which `spread_pct` can miss if decline is monotonic)
+- `burst_to_steady_ratio`: *advisory only*. Recorded for comparison against the calibration baseline; the script does NOT change verdict from this. A ratio close to 1.0 on `active-cooled-pro` may indicate "always-throttled", but on `fanless` and `desktop` it's normal.
 - A dead worker (any iteration's throughput == 0) is automatically a fail.
 - The script automatically escalates **2 or more independent warn signals** to fail (compound-warn rule).
 
@@ -130,21 +130,21 @@ Any FAIL is **strongly suggestive of a batch-level defect**. Cross-reference the
 
 | First run | Rerun action | Second run | Final |
 |---|---|---|---|
-| pass | none | — | pass |
+| pass | none | n/a | pass |
 | warn | rerun once | pass | pass *(note original warn in report)* |
 | warn | rerun once | warn | **fail** *(compound evidence)* |
 | warn | rerun once | fail | fail |
-| fail | none | — | fail |
+| fail | none | n/a | fail |
 
-No third run — if two runs both warn, that's signal enough; running a third can mask thermal-paste defects that worsen with each iteration as the chassis stays saturated.
+No third run. If two runs both warn, that's signal enough; running a third can mask thermal-paste defects that worsen with each iteration as the chassis stays saturated.
 
-> No cooldown to Phase 5. The chassis ends Phase 4 hot — that's the right starting state for the sustained thermal test. Move directly into Phase 5.
+> No cooldown to Phase 5. The chassis ends Phase 4 hot, which is the right starting state for the sustained thermal test. Move directly into Phase 5.
 
-## Phase 5 — Sustained thermal load (~10 min)
+## Phase 5: Sustained thermal load (~10 min)
 
-**Goal:** confirm the chassis can sustain the chip under prolonged load without thermal cliffs. Combined with Phase 4 this is ~16–20 min of continuous load (depending on chassis class) — past thermal saturation time on most chassis.
+**Goal:** confirm the chassis can sustain the chip under prolonged load without thermal cliffs. Combined with Phase 4 this is ~16–20 min of continuous load (depending on chassis class), past thermal saturation time on most chassis.
 
-> Run directly after Phase 4 — chassis is already hot and that's the right starting state for sustained-load measurement.
+> Run directly after Phase 4. The chassis is already hot and that's the right starting state for sustained-load measurement.
 
 Requires sudo for `powermetrics`. Prompt for sudo once:
 
@@ -158,21 +158,21 @@ sudo CHASSIS_CLASS=active-cooled-pro \
 
 Default: 10 minutes of continuous parallel hashing, with `powermetrics` sampling every 5 s (`smc` and `cpu_power` samplers). The script writes its own verdict per the chassis-class table in `thermal-load.sh` (mirrors [Pass-Fail Criteria](Pass-Fail%20Criteria.md)).
 
-The script's `data_quality` field is the safety net: `no_samples` (sudo failed, format change, etc.) forces a `fail` verdict regardless of other metrics — so a misconfigured run can't false-pass.
+The script's `data_quality` field is the safety net: `no_samples` (sudo failed, format change, etc.) forces a `fail` verdict regardless of other metrics, so a misconfigured run can't false-pass.
 
 Check from the JSON:
-- `data_quality` == "ok" (or "few_samples" with verdict warn). `no_samples` is **fatal** — automatically forces fail.
+- `data_quality` == "ok" (or "few_samples" with verdict warn). `no_samples` is **fatal**, automatically forces fail.
 - `cpu_die_temp_c.max` within the chassis-class threshold (see [Pass-Fail Criteria](Pass-Fail%20Criteria.md))
-- `early_cliff_pct` (first 30 s) — the **textbook bad-batch signature** ("cliffs to base clock within 30 s") is now actually caught
+- `early_cliff_pct` (first 30 s) catches the **textbook bad-batch signature** ("cliffs to base clock within 30 s")
 - `frequency_cliff_pct` (mid-run, after 90 s warmup-skip) against chassis-class thresholds
 - `steady_state_vs_peak_pct` against chassis-class thresholds
 - `fan_rpm_avg.max - .min` ≥ 200 RPM (skip for fanless)
-- `ambient_temp_c.first_sample` recorded from powermetrics — useful for cross-machine comparison (a unit tested in a 32°C store hits limits faster than one in a 21°C lab)
+- `ambient_temp_c.first_sample` recorded from powermetrics. Useful for cross-machine comparison (a unit tested in a 32°C store hits limits faster than one in a 21°C lab).
 - The script automatically escalates **3 or more warn signals** to fail (compound-warn rule).
 
-Frequency cliffs to base clock within 30 s under any chassis are the bad-batch / thermal-paste signature — `early_cliff_pct` catches this. Cross-reference the calibration's Performance Variance note for any cliff/steady fail.
+Frequency cliffs to base clock within 30 s under any chassis are the bad-batch / thermal-paste signature; `early_cliff_pct` catches this. Cross-reference the calibration's Performance Variance note for any cliff/steady fail.
 
-## Phase 6 — Display visual inspection (~3 min)
+## Phase 6: Display visual inspection (~3 min)
 
 **Goal:** find dead/stuck pixels, backlight bleed, color uniformity issues.
 
@@ -195,9 +195,9 @@ Walk through each color, asking yourself:
 | 50% gray | Any obvious banding or patches? Some local-dimming structure is normal on mini-LED. |
 | Black (dim ambient) | Any backlight bleed at edges/corners? Distinguish from IPS glow (glow shifts with viewing angle, bleed doesn't). |
 
-Record yes/no per color. Severe issues → fail. Minor mini-LED blooming around bright transitions is normal on Pro displays — not a defect.
+Record yes/no per color. Severe issues → fail. Minor mini-LED blooming around bright transitions is normal on Pro displays, not a defect.
 
-## Phase 7 — Manual physical inspection (~5 min)
+## Phase 7: Manual physical inspection (~5 min)
 
 **Goal:** find build quality issues invisible to software. Step through each check:
 
@@ -225,7 +225,7 @@ Record yes/no per color. Severe issues → fail. Minor mini-LED blooming around 
 
 If any answer is "yes, there's an issue", record it as a fail with severity per [Pass-Fail Criteria](Pass-Fail%20Criteria.md).
 
-## Phase 8 — Apple Diagnostics (~5–10 min, includes reboot)
+## Phase 8: Apple Diagnostics (~5–10 min, includes reboot)
 
 **Goal:** Apple's own hardware self-test.
 
@@ -233,7 +233,7 @@ Save your work. Reboot. As soon as the Mac powers off, **press and hold the powe
 
 Record the result code(s) or "no issues found." Pass = all clear. Any reference code = fail; cross-reference Apple's [diagnostic codes](https://support.apple.com/en-us/102713) in the report.
 
-## Phase 9 — Optional idle drain test (~30 min)
+## Phase 9: Optional idle drain test (~30 min)
 
 **Goal:** detect anomalous battery drain at idle.
 
@@ -251,17 +251,17 @@ Pass: > 95% remaining (≤ 5% drain over 30 min sleep).
 Warn: 90–95% remaining.
 Fail: < 90% remaining.
 
-## Phase 10 — Generate report
+## Phase 10: Generate report
 
 Two artifacts in `Reports/`:
 
-1. **`Reports/<ISO-timestamp>.json`** — canonical, schema in [`Reports/SCHEMA.md`](../Reports/SCHEMA.md). Hashed serial. Submission-safe by default. *This is the artifact for the future hosted aggregator.*
+1. **`Reports/<ISO-timestamp>.json`**: canonical, schema in [`Reports/SCHEMA.md`](../Reports/SCHEMA.md). Hashed serial. Submission-safe by default. *This is the artifact for the future hosted aggregator.*
 
-2. **`Reports/<ISO-timestamp>.md`** — human-readable render of the JSON:
+2. **`Reports/<ISO-timestamp>.md`**: human-readable render of the JSON:
 	- **Header:** timestamp, target, hashed serial, actual unit specs.
 	- **Section per phase:** PASS/WARN/FAIL with concrete numbers and evidence.
 	- **Summary table** of all checks.
-	- **Final line:** `RESULT: PASS` or `RESULT: FAIL — <one-line reason>`.
+	- **Final line:** `RESULT: PASS` or `RESULT: FAIL`, with a one-line reason.
 	- **Recommendations:** for any FAIL or WARN, link the relevant calibration note and recommend action (return / accept / negotiate).
 
-Per-phase raw script outputs are saved to `Reports/<ISO-timestamp>-raw/*.json` for evidence — the canonical JSON aggregates the verdicts but keeps these around for full auditability.
+Per-phase raw script outputs are saved to `Reports/<ISO-timestamp>-raw/*.json` for evidence. The canonical JSON aggregates the verdicts but keeps these around for full auditability.

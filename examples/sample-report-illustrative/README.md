@@ -1,6 +1,6 @@
-# Sample report — *illustrative*
+# Sample report (*illustrative*)
 
-> ⚠️ **Not a real Shakedown run.** The JSON and Markdown files in this folder are *hand-crafted examples* showing what a successful run on a 16" MacBook Pro M5 Max (64 GB) is supposed to look like. The numbers are realistic — drawn from public M5 Max review data and reasonable thermal-physics assumptions — but no actual unit produced this output.
+> ⚠️ **Not a real Shakedown run.** The JSON and Markdown files in this folder are *hand-crafted examples* showing what a successful run on a 16" MacBook Pro M5 Max (64 GB) is supposed to look like. The numbers are realistic, drawn from public M5 Max review data and reasonable thermal-physics assumptions, but no actual unit produced this output.
 
 The sample exists for two reasons:
 
@@ -9,8 +9,8 @@ The sample exists for two reasons:
 
 Files:
 
-- [`2026-04-30T14-30-00-mbp-16-m5-max-64.json`](2026-04-30T14-30-00-mbp-16-m5-max-64.json) — the canonical schema-versioned report
-- [`2026-04-30T14-30-00-mbp-16-m5-max-64.md`](2026-04-30T14-30-00-mbp-16-m5-max-64.md) — the human-readable render
+- [`2026-04-30T14-30-00-mbp-16-m5-max-64.json`](2026-04-30T14-30-00-mbp-16-m5-max-64.json): the canonical schema-versioned report
+- [`2026-04-30T14-30-00-mbp-16-m5-max-64.md`](2026-04-30T14-30-00-mbp-16-m5-max-64.md): the human-readable render
 
 When real submitted reports start landing (see [Roadmap](../../README.md#roadmap)), they'll be tagged as such and this folder's purpose narrows to "format reference."
 

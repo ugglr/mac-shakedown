@@ -1,96 +1,96 @@
 # Changelog
 
-All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the JSON report schema follows the versioning contract in [`Reports/SCHEMA.md`](Reports/SCHEMA.md) — any change to the test methodology (runbook, thresholds, or scripts) bumps at least the patch version of the schema so submitted reports stay sortable across method revisions.
+All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The JSON report schema follows the versioning contract in [`Reports/SCHEMA.md`](Reports/SCHEMA.md): any change to the test methodology (runbook, thresholds, or scripts) bumps at least the patch version of the schema so submitted reports stay sortable across method revisions.
 
 ## [Unreleased]
 
 ### Removed
 
-- **`AGENTS.md` and `CLAUDE.md`** — the orchestrator (`./run`) handles all the automated phases end-to-end without an LLM, sudo and the y/N confirmation prompt mean an agent can't actually drive `./run` anyway, and the manual phases (display test, physical inspection, Apple Diagnostics, idle drain) are checklist work that a runbook covers directly. The cross-tool agent convention added churn without enabling anything. All agent framing dropped from README, Runbook, CONTRIBUTING, SECURITY, Reports/SCHEMA, targets/README, examples/m5-2026/README, Shakedown Brain, bug-report template, and cpu-variance.sh comments.
+- **`AGENTS.md` and `CLAUDE.md`**. The orchestrator (`./run`) handles all the automated phases end-to-end without an LLM, sudo and the y/N confirmation prompt mean an agent can't actually drive `./run` anyway, and the manual phases (display test, physical inspection, Apple Diagnostics, idle drain) are checklist work that a runbook covers directly. The cross-tool agent convention added churn without enabling anything. All agent framing dropped from README, Runbook, CONTRIBUTING, SECURITY, Reports/SCHEMA, targets/README, examples/m5-2026/README, Shakedown Brain, bug-report template, and cpu-variance.sh comments.
 
-### Added — calibration submission workflow
+### Added: calibration submission workflow
 
-- **`run-shakedown.sh` orchestrator** — wraps the four auto-runnable phases (inventory, battery, CPU variance, thermal load) end-to-end, prompts sudo upfront, aggregates into a SCHEMA-compliant JSON, and emits a sanitized submission copy alongside the full local copy. One command instead of five-plus, with the predictable `{YYYY-MM-DD}-{preset}-{hash4}.json` filename convention.
-- **`--target` is optional** — running without a preset auto-detects chassis class from `system_profiler` (override with `CHASSIS_CLASS` env var), skips inventory asserts, and softens the battery "factory-fresh" checks (cycle count, ≥99% capacity) since those only make sense on a new-purchase verification. Real-degradation checks still apply. Filename becomes `{YYYY-MM-DD}-{chassis}-{memory}gb-{hash4}.json`.
-- **`./run` convenience entry** — thin shim at the repo root, execs the orchestrator with all args forwarded. Means the public command is `./run` after `cd ~/mac-shakedown`, not the longer `./Verification/scripts/run-shakedown.sh`.
-- **`--no-sudo` (alias `--skip-thermal`)** — skips Phase 5, which is the only phase that needs sudo. Phase 4 (variance) still runs and is the headline test. Half the runtime, no password.
-- **Sudo keep-alive** — background loop refreshes `sudo -n true` every 60 s while the orchestrator runs. macOS default sudo timestamp is 5 min and Phase 4 on Intel takes ~8 min, so the user would otherwise hit a second password prompt mid-run.
-- **Flame banner** — colored ASCII banner on startup, suppressed when stderr isn't a TTY (CI / piped output stays clean).
-- **`Reports/local/` vs `Reports/submissions/` split** — full output with `_raw_*` debug fields stays gitignored; sanitized copy is committable as a PR. Plaintext serials never reach the submission copy, even with `INCLUDE_PLAINTEXT_SERIAL=1`.
-- **CI submission audit** — new step in `.github/workflows/lint.yml` triggered on PRs touching `Reports/submissions/**`. Rejects any `_raw_*` field, `raw_log_path`, plaintext `serial_number`, off-pattern filename, missing SCHEMA fields, or `submission_safe != true`.
-- **README "Submit a calibration report" section** + CONTRIBUTING.md submission flow + PR-template checkbox for calibration submissions. Until a hosted aggregator exists, PRs are how the calibration corpus grows.
-- **Soft inventory assert for `model_must_include`** — Apple Silicon's `machine_model` (e.g. `Mac17,1`) doesn't reliably contain the screen-size substring, so a mismatch now warns rather than fails. Chip and memory remain hard asserts (those are reliable from `system_profiler`).
+- **`run-shakedown.sh` orchestrator.** Wraps the four auto-runnable phases (inventory, battery, CPU variance, thermal load) end-to-end, prompts sudo upfront, aggregates into a SCHEMA-compliant JSON, and emits a sanitized submission copy alongside the full local copy. One command instead of five-plus, with the predictable `{YYYY-MM-DD}-{preset}-{hash4}.json` filename convention.
+- **`--target` is optional.** Running without a preset auto-detects chassis class from `system_profiler` (override with `CHASSIS_CLASS` env var), skips inventory asserts, and softens the battery "factory-fresh" checks (cycle count, ≥99% capacity) since those only make sense on a new-purchase verification. Real-degradation checks still apply. Filename becomes `{YYYY-MM-DD}-{chassis}-{memory}gb-{hash4}.json`.
+- **`./run` convenience entry.** Thin shim at the repo root, execs the orchestrator with all args forwarded. Means the public command is `./run` after `cd ~/mac-shakedown`, not the longer `./Verification/scripts/run-shakedown.sh`.
+- **`--no-sudo` (alias `--skip-thermal`).** Skips Phase 5, the only phase that needs sudo. Phase 4 (variance) still runs and is the headline test. Half the runtime, no password.
+- **Sudo keep-alive.** Background loop refreshes `sudo -n true` every 60 s while the orchestrator runs. macOS default sudo timestamp is 5 min and Phase 4 on Intel takes ~8 min, so the user would otherwise hit a second password prompt mid-run.
+- **Flame banner.** Colored ASCII banner on startup, suppressed when stderr isn't a TTY (CI / piped output stays clean).
+- **`Reports/local/` vs `Reports/submissions/` split.** Full output with `_raw_*` debug fields stays gitignored; sanitized copy is committable as a PR. Plaintext serials never reach the submission copy, even with `INCLUDE_PLAINTEXT_SERIAL=1`.
+- **CI submission audit.** New step in `.github/workflows/lint.yml` triggered on PRs touching `Reports/submissions/**`. Rejects any `_raw_*` field, `raw_log_path`, plaintext `serial_number`, off-pattern filename, missing SCHEMA fields, or `submission_safe != true`.
+- **README "Submit a calibration report" section**, plus CONTRIBUTING.md submission flow and a PR-template checkbox for calibration submissions. Until a hosted aggregator exists, PRs are how the calibration corpus grows.
+- **Soft inventory assert for `model_must_include`.** Apple Silicon's `machine_model` (e.g. `Mac17,1`) doesn't reliably contain the screen-size substring, so a mismatch now warns rather than fails. Chip and memory remain hard asserts (those are reliable from `system_profiler`).
 
-### Added — methodology hardening
+### Added: methodology hardening
 
-- **Phase 4 cold burst measurement** — first 5 s of parallel SHA-256 captured before warmup heats the chassis. Burst figure recorded as `burst_throughput_mb_per_s` for diagnostic comparison against the steady-state mean (advisory; doesn't drive verdict without a calibration baseline).
-- **Phase 4 chassis-class-aware warmup defaults** — `active-cooled-pro` now defaults to **300 s** (was 90 s; a 16" MBP needs 5–8 min to reach thermal saturation). `fanless` defaults to 60 s, `desktop` / `intel-laptop` / `intel-desktop` default to 180 s. Total Phase 4 runtime: ~10 min on Pro, ~6 min on Air.
-- **`max_to_min_ratio` warn band 1.2–1.4×** — was previously fail-only at ≥ 1.4×; the warn band catches near-miss units.
-- **Phase 4 dead-worker safeguard** — any iteration with zero throughput now forces fail (was previously masked by `min(throughputs) > 0 else 1.0` fallback that produced ratio = 1.0 → silent PASS).
-- **Phase 4 worker-imbalance reporting** — within-iter `(max_worker - min_worker) / max_worker × 100` recorded per iteration, so a defective single core is at least visible in the JSON even if the macOS scheduler routes around it.
-- **Phase 5 early-window cliff metric** — first 30 s frequency cliff now evaluated separately from the post-warmup mid-run cliff. The textbook bad-batch signature ("cliffs to base clock within 30 s under load") was previously thrown away by the 90 s warmup-skip; it's now `early_cliff_pct` with chassis-class thresholds.
-- **Phase 5 ambient-temp capture** — `powermetrics` Ambient/Battery temp readings recorded as `ambient_temp_c.first_sample` and `.max_during_run`, useful for cross-machine comparison (a Mac tested in a 32 °C store hits limits faster than one in a 21 °C lab).
-- **Phase 5 chassis-class-aware verdicts** — script previously hardcoded `active-cooled-pro` thresholds, which would false-fail an Air or false-pass a desktop. Now reads `CHASSIS_CLASS` env var (default `active-cooled-pro`) and applies the correct threshold table.
-- **Phase 5 multi-fan regex** — handles `Fans:` headers + per-fan lines on 16" MBP and Mac Studio (previously matched only `Fan:` and `Fan N:`, leaving fan_avgs empty on multi-fan chassis).
-- **Phase 5 data-quality safety net** — `data_quality: "no_samples"` automatically forces fail. Previously the verdict logic could short-circuit on empty lists and emit a misleading PASS with no reasons when sudo failed or powermetrics output format changed.
-- **Compound-warn escalation** — Phase 4 escalates 2+ warn signals to fail; Phase 5 escalates 3+. Multiple simultaneous near-threshold readings shouldn't aggregate to a single warn.
-- **Process-group kill in Phase 5** — `thermal-load.sh` now backgrounds the load in its own process group and `kill -- -$LOAD_PGID`s on EXIT/INT/TERM. Previously `kill $LOAD_PID` only signalled the parent Python and orphaned the multiprocessing pool.
-- **Hashed serial numbers actually happen** — `inventory.sh` and `battery.sh` now hash serial numbers with SHA-256 by default and emit `serial_hash` (the README claimed this; the implementation now matches the claim). Plaintext serial is opt-in via `INCLUDE_PLAINTEXT_SERIAL=1`.
-- **Privacy-aware inventory output** — full `system_profiler` and `ioreg` dumps moved into `_raw_*` fields with comments explaining they may contain paired Bluetooth IDs, Wi-Fi SSIDs, USB device serials, etc. Agent strips these from canonical submission JSON.
+- **Phase 4 cold burst measurement.** First 5 s of parallel SHA-256 captured before warmup heats the chassis. Burst figure recorded as `burst_throughput_mb_per_s` for diagnostic comparison against the steady-state mean (advisory; doesn't drive verdict without a calibration baseline).
+- **Phase 4 chassis-class-aware warmup defaults.** `active-cooled-pro` now defaults to **300 s** (was 90 s; a 16" MBP needs 5–8 min to reach thermal saturation). `fanless` defaults to 60 s, `desktop` / `intel-laptop` / `intel-desktop` default to 180 s. Total Phase 4 runtime: ~10 min on Pro, ~6 min on Air.
+- **`max_to_min_ratio` warn band 1.2–1.4×.** Was previously fail-only at ≥ 1.4×; the warn band catches near-miss units.
+- **Phase 4 dead-worker safeguard.** Any iteration with zero throughput now forces fail (was previously masked by `min(throughputs) > 0 else 1.0` fallback that produced ratio = 1.0 → silent PASS).
+- **Phase 4 worker-imbalance reporting.** Within-iter `(max_worker - min_worker) / max_worker × 100` recorded per iteration, so a defective single core is at least visible in the JSON even if the macOS scheduler routes around it.
+- **Phase 5 early-window cliff metric.** First 30 s frequency cliff now evaluated separately from the post-warmup mid-run cliff. The textbook bad-batch signature ("cliffs to base clock within 30 s under load") was previously thrown away by the 90 s warmup-skip; it's now `early_cliff_pct` with chassis-class thresholds.
+- **Phase 5 ambient-temp capture.** `powermetrics` Ambient/Battery temp readings recorded as `ambient_temp_c.first_sample` and `.max_during_run`, useful for cross-machine comparison (a Mac tested in a 32 °C store hits limits faster than one in a 21 °C lab).
+- **Phase 5 chassis-class-aware verdicts.** Script previously hardcoded `active-cooled-pro` thresholds, which would false-fail an Air or false-pass a desktop. Now reads `CHASSIS_CLASS` env var (default `active-cooled-pro`) and applies the correct threshold table.
+- **Phase 5 multi-fan regex.** Handles `Fans:` headers and per-fan lines on 16" MBP and Mac Studio (previously matched only `Fan:` and `Fan N:`, leaving fan_avgs empty on multi-fan chassis).
+- **Phase 5 data-quality safety net.** `data_quality: "no_samples"` automatically forces fail. Previously the verdict logic could short-circuit on empty lists and emit a misleading PASS with no reasons when sudo failed or powermetrics output format changed.
+- **Compound-warn escalation.** Phase 4 escalates 2+ warn signals to fail; Phase 5 escalates 3+. Multiple simultaneous near-threshold readings shouldn't aggregate to a single warn.
+- **Process-group kill in Phase 5.** `thermal-load.sh` now backgrounds the load in its own process group and `kill -- -$LOAD_PGID`s on EXIT/INT/TERM. Previously `kill $LOAD_PID` only signalled the parent Python and orphaned the multiprocessing pool.
+- **Hashed serial numbers actually happen.** `inventory.sh` and `battery.sh` now hash serial numbers with SHA-256 by default and emit `serial_hash` (the README claimed this; the implementation now matches the claim). Plaintext serial is opt-in via `INCLUDE_PLAINTEXT_SERIAL=1`.
+- **Privacy-aware inventory output.** Full `system_profiler` and `ioreg` dumps moved into `_raw_*` fields with comments explaining they may contain paired Bluetooth IDs, Wi-Fi SSIDs, USB device serials, etc. The orchestrator strips these from the canonical submission JSON.
 
-### Added — Intel + older Apple Silicon support
+### Added: Intel and older Apple Silicon support
 
-- **`intel-laptop` and `intel-desktop` chassis classes** — looser thermal thresholds reflecting Intel's aggressive throttling (steady-state ≥ 50% of peak rather than ≥ 70%).
-- **Intel powermetrics format** — `thermal-load.sh` now also parses `CPU N frequency:`, `Package Power:`, `IA Cores Power:`, `GT Cores Power:` so frequency and power summaries populate on Intel.
+- **`intel-laptop` and `intel-desktop` chassis classes** with looser thermal thresholds reflecting Intel's aggressive throttling (steady-state ≥ 50% of peak rather than ≥ 70%).
+- **Intel powermetrics format.** `thermal-load.sh` now also parses `CPU N frequency:`, `Package Power:`, `IA Cores Power:`, `GT Cores Power:` so frequency and power summaries populate on Intel.
 - **`mbp-16-intel-2019.json`** target preset as a worked example.
-- **`inventory.sh` Intel chip detection** — falls back to `cpu_type` when `chip_type` is absent (Apple Silicon vs. Intel system_profiler keys differ); records `is_apple_silicon` flag for downstream reasoning.
+- **`inventory.sh` Intel chip detection** falls back to `cpu_type` when `chip_type` is absent (Apple Silicon vs. Intel `system_profiler` keys differ); records `is_apple_silicon` flag for downstream reasoning.
 - Generation coverage table in `targets/README.md`: M5 (primary), M1–M4 (scripts work, no per-generation calibration yet), Intel 2018+ (works with new chassis classes), pre-2018 (untested).
 
-### Added — OSS hygiene
+### Added: OSS hygiene
 
 - `CHANGELOG.md` (this file).
-- `SECURITY.md` — surface-area summary, the only `sudo` use (`powermetrics`), private security advisory pointer.
-- `.github/ISSUE_TEMPLATE/{defect-report,bug-report,config}.yml` — form-style templates with PII-review checklist tied to `submission_safe`/`store_location`/etc.
-- `.github/pull_request_template.md` — type-of-change checklist + validation requirements (run affected scripts, paste JSON, note chip/RAM).
-- `.github/workflows/lint.yml` — shellcheck on every script, `python3 -m json.tool` on every target preset, `ast.parse` on every Python heredoc, markdown-link existence check.
-- `examples/sample-report-illustrative/` — hand-crafted example PASS run on a 16" M5 Max 64 GB so visitors can see what the harness produces without running it themselves.
+- `SECURITY.md` covering surface-area summary, the only `sudo` use (`powermetrics`), private security advisory pointer.
+- `.github/ISSUE_TEMPLATE/{defect-report,bug-report,config}.yml` form-style templates with PII-review checklist tied to `submission_safe`/`store_location`/etc.
+- `.github/pull_request_template.md` type-of-change checklist plus validation requirements (run affected scripts, paste JSON, note chip/RAM).
+- `.github/workflows/lint.yml` runs shellcheck on every script, `python3 -m json.tool` on every target preset, `ast.parse` on every Python heredoc, plus a markdown-link existence check.
+- `examples/sample-report-illustrative/` hand-crafted example PASS run on a 16" M5 Max 64 GB so visitors can see what the harness produces without running it themselves.
 - README "Status (v0.1)" callout disclosing the methodology has not yet been validated against a confirmed-defective unit.
-- README "Supported agents" table with verification status per agent (Claude Code ✅, others 🟡 unverified).
+- README "Supported agents" table with verification status per agent (Claude Code ✅, others 🟡 unverified). (Removed in this release; see above.)
 - README Quick start broken into numbered steps so the `xcode-select --install` 5–10 min wait is no longer hidden in a comment.
 
 ### Changed
 
-- `examples/m5-max-2026/` → `examples/m5-2026/` (calibration covers M5 / M5 Pro / M5 Max — the Air target preset reuses the same calibration directory).
+- `examples/m5-max-2026/` renamed to `examples/m5-2026/`. The calibration covers M5 / M5 Pro / M5 Max, and the Air target preset reuses the same calibration directory.
 - `Verification/Pass-Fail Criteria.md` rewritten with chassis-class threshold tables, compound-warn escalation, the `burst_to_steady_ratio` advisory note, and the SHA-256 workload caveat.
 - README total runtime claim updated: ~45 min on MBP, ~25 min on Air, ~35 min on desktop / Intel (was a flat ~40 min).
-- `AGENTS.md` operating principles expanded to cover `CHASSIS_CLASS` pass-through, rerun-on-warn discipline, and trust-the-data_quality-field guidance.
-- **Recommended sudo invocation switched from `sudo -E ./thermal-load.sh` to inline `sudo CHASSIS_CLASS="$CHASSIS_CLASS" ./thermal-load.sh`** across README, AGENTS.md, and Runbook. The `-E` form silently dropped `CHASSIS_CLASS` on default macOS sudoers configs (`env_keep` doesn't list it, admin rules don't grant `SETENV`), falling back to `active-cooled-pro` defaults — wrong thresholds for fanless, desktop, and Intel chassis. The inline form is preserved regardless of sudoers `env_keep`.
-- **Markdown-link CI check rewritten in Python** (`.github/workflows/lint.yml`). The previous bash version used `${path//%/\\x}` URL decoding that works in bash (so CI on `ubuntu-latest` is fine) but produces false positives in zsh — contributors running the check locally on default-shell macOS hit broken-link errors on any path with `%`-encoded characters.
-- Drain framing reconciled across Runbook + Pass-Fail Criteria — both `% remaining` and `% drain` documented for the 30-min idle test.
+- `AGENTS.md` operating principles expanded to cover `CHASSIS_CLASS` pass-through, rerun-on-warn discipline, and trust-the-data_quality-field guidance. (Then removed entirely in this release.)
+- **Recommended sudo invocation switched from `sudo -E ./thermal-load.sh` to inline `sudo CHASSIS_CLASS="$CHASSIS_CLASS" ./thermal-load.sh`** across README, AGENTS.md, and Runbook. The `-E` form silently dropped `CHASSIS_CLASS` on default macOS sudoers configs (`env_keep` doesn't list it, admin rules don't grant `SETENV`), falling back to `active-cooled-pro` defaults: wrong thresholds for fanless, desktop, and Intel chassis. The inline form is preserved regardless of sudoers `env_keep`.
+- **Markdown-link CI check rewritten in Python** (`.github/workflows/lint.yml`). The previous bash version used `${path//%/\\x}` URL decoding that works in bash (so CI on `ubuntu-latest` is fine) but produces false positives in zsh. Contributors running the check locally on default-shell macOS hit broken-link errors on any path with `%`-encoded characters.
+- Drain framing reconciled across Runbook + Pass-Fail Criteria. Both `% remaining` and `% drain` documented for the 30-min idle test.
 
 ### Fixed
 
-- **`display-test.sh` Esc handler** now exits fullscreen. Previously called `window.close()`, which silently fails on tabs the user navigated to (rather than ones opened by JS) — the script claimed Esc would exit but it didn't. The page now also documents `Cmd-W` for closing the tab.
-- **`display-test.sh` tempfile handling.** The previous `HTML=$(mktemp -t shakedown-display).html` orphaned a 0-byte mktemp file because BSD `mktemp -t` treats its argument as a literal prefix (the X-template expansion is GNU-only). Now uses `mktemp -d` for a unique directory + fixed `page.html` inside, so the `.html` extension is preserved for `open`'s Safari dispatch.
+- **`display-test.sh` Esc handler** now exits fullscreen. Previously called `window.close()`, which silently fails on tabs the user navigated to (rather than ones opened by JS): the script claimed Esc would exit but it didn't. The page now also documents `Cmd-W` for closing the tab.
+- **`display-test.sh` tempfile handling.** The previous `HTML=$(mktemp -t shakedown-display).html` orphaned a 0-byte mktemp file because BSD `mktemp -t` treats its argument as a literal prefix (the X-template expansion is GNU-only). Now uses `mktemp -d` for a unique directory and a fixed `page.html` inside, so the `.html` extension is preserved for `open`'s Safari dispatch.
 - **`display-test.sh` validates `SECONDS_PER_COLOR`** as a positive integer before sed-injecting into the page's JavaScript. Previously a non-numeric value produced broken JS or, in adversarial use, JS injection in the local browser tab.
 
 ### Known limitations (calibration baseline pending)
 
 - The methodology has not yet been validated against a confirmed-defective unit. Thresholds are derived from public reports and a small number of presumed-good runs.
-- Phase 4 uses SHA-256 which is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel — it stresses the SHA engines + scheduling + thermal mass but not the integer pipelines or memory bandwidth that Cinebench / Geekbench probe more thoroughly. The variance methodology transfers cleanly to any sustained workload; the SHA choice is for zero-install portability. A non-accelerated workload pass is on the roadmap.
+- Phase 4 uses SHA-256 which is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. It stresses the SHA engines, scheduling, and thermal mass, but not the integer pipelines or memory bandwidth that Cinebench / Geekbench probe more thoroughly. The variance methodology transfers cleanly to any sustained workload; the SHA choice is for zero-install portability. A non-accelerated workload pass is on the roadmap.
 - GPU not yet covered. Memory bandwidth not yet covered. NVMe SSD performance not yet covered (only SMART status).
-- 14" vs 16" MBP currently share the `active-cooled-pro` threshold table — the calibration's [Thermal Throttling note](examples/m5-2026/Issues/Thermal%20Throttling.md) describes 14" M5 Max throttling as design behavior, so a working 14" may land in the warn band of the current thresholds. A separate 14" sub-class is on the roadmap.
+- 14" and 16" MBP currently share the `active-cooled-pro` threshold table. The calibration's [Thermal Throttling note](examples/m5-2026/Issues/Thermal%20Throttling.md) describes 14" M5 Max throttling as design behavior, so a working 14" may land in the warn band of the current thresholds. A separate 14" sub-class is on the roadmap.
 
-## [0.1.0] — 2026-04-30
+## [0.1.0] 2026-04-30
 
 ### Added
 
 - Initial release.
-- Verification machinery (generation-agnostic): runbook, pass/fail criteria parameterized by chassis class, and the five core scripts — `inventory.sh`, `battery.sh`, `cpu-variance.sh`, `thermal-load.sh`, `display-test.sh`.
+- Verification machinery (generation-agnostic): runbook, pass/fail criteria parameterized by chassis class, and the five core scripts: `inventory.sh`, `battery.sh`, `cpu-variance.sh`, `thermal-load.sh`, `display-test.sh`.
 - Phase 0–9 procedure: pre-flight, hardware identity, battery health, sensor inventory, CPU variance (90 s warmup + 5 × 60 s timed iterations, parallel SHA-256), 10-minute sustained thermal load with `powermetrics` sampling, fullscreen display visual inspection, manual physical inspection, Apple Diagnostics, and an optional 30-minute idle-drain test.
 - Target presets: `mbp-16-m5-max-64`, `mbp-14-m5-pro-24`, `macbook-air-m5-16`.
 - M5 (2026) generation calibration under `examples/m5-max-2026/` (renamed in [Unreleased]).
-- `AGENTS.md` cross-tool agent operating manual, with `CLAUDE.md` as the Claude Code auto-loader pointer.
+- `AGENTS.md` cross-tool agent operating manual, with `CLAUDE.md` as the Claude Code auto-loader pointer. (Both removed in [Unreleased].)
 - JSON report schema v1.0 with hashed-serial design, submission-safety flag, and opt-in fields for future crowd-sourced aggregation.
 
 [Unreleased]: https://github.com/ugglr/mac-shakedown/compare/v0.1.0...HEAD

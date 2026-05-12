@@ -19,11 +19,11 @@ The 14" / 16" mini-LED panels on M5 MBPs are praised overall. Reported issues ar
 ### Backlight bleed
 - Light leaking from edges / corners on a pure black background.
 - Test: dim ambient light, set brightness ~30–50%, display full-screen black, look at edges and corners.
-- Distinguish from **IPS glow** (shifts when you move your head — normal); bleed stays put when you move.
+- Distinguish from **IPS glow** (shifts when you move your head; that's normal). Bleed stays put when you move.
 
 ### Backlight uniformity
 - Display full-screen 50% gray and look for noticeably brighter / darker patches.
-- Healthy mini-LED panels show some banding from local dimming zones — that's normal. Severe patches are not.
+- Healthy mini-LED panels show some banding from local dimming zones (that's normal). Severe patches are not.
 
 ### Color uniformity / tint
 - Full-screen white. Look for yellow / pink / blue patches, especially toward the edges.
@@ -34,7 +34,7 @@ The 14" / 16" mini-LED panels on M5 MBPs are praised overall. Reported issues ar
 
 ## How to test on-site
 
-There are several free web-based pixel testers — load them full-screen in Safari:
+There are several free web-based pixel testers. Load them full-screen in Safari:
 - `deadpixeltest.org`
 - `touch-screen-test.com/screen-test`
 - `black-screen.cc/black-screen-test`
@@ -43,6 +43,6 @@ For the verification script, we can launch a sequence of full-screen color image
 
 ## Sources
 
-- [Apple Discussions — display issue hardware or software](https://discussions.apple.com/thread/256214402)
+- [Apple Discussions: display issue hardware or software](https://discussions.apple.com/thread/256214402)
 - [Dead Pixel Test online tool](https://deadpixeltest.org/)
-- [ShopSavvy — M5 display specs](https://shopsavvy.com/answers/macbook-pro-m5-display-screen-quality-specifications)
+- [ShopSavvy: M5 display specs](https://shopsavvy.com/answers/macbook-pro-m5-display-screen-quality-specifications)

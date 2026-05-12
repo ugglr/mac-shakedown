@@ -7,7 +7,7 @@
 
   "target": {
     "preset": "mbp-16-m5-max-64",
-    "name": "MacBook Pro 16-inch — M5 Max — 64 GB",
+    "name": "MacBook Pro 16-inch, M5 Max, 64 GB",
     "chip_pattern": "M5 Max",
     "memory_gb": 64,
     "model_must_include": "16",
@@ -110,10 +110,10 @@
         "burst_to_steady_ratio": 0.806,
         "worker_imbalance_pct_per_iter": [0.4, 0.6, 0.3, 0.5, 0.4],
         "median_worker_imbalance_pct": 0.4,
-        "workload": "sha256-parallel (hardware-accelerated on Apple Silicon — see script header CAVEAT)"
+        "workload": "sha256-parallel (hardware-accelerated on Apple Silicon, see script header CAVEAT)"
       },
       "verdict_reasons": [
-        "spread 0.41%, ratio 1.00×, decline 0.21% — within healthy range"
+        "spread 0.41%, ratio 1.00×, decline 0.21%, within healthy range"
       ]
     },
     "5_thermal_load": {
@@ -146,12 +146,12 @@
       "duration_s": 95,
       "details": {
         "manual_responses": {
-          "white_field": "ok — uniform, no patches, no dead pixels",
+          "white_field": "ok, uniform, no patches, no dead pixels",
           "red_field": "ok",
           "green_field": "ok",
           "blue_field": "ok",
-          "gray_50_field": "ok — local-dimming structure visible (normal mini-LED)",
-          "black_field_dim_ambient": "ok — minor IPS glow at corners, no static bleed"
+          "gray_50_field": "ok, local-dimming structure visible (normal mini-LED)",
+          "black_field_dim_ambient": "ok, minor IPS glow at corners, no static bleed"
         }
       }
     },
@@ -169,8 +169,8 @@
           "camera_photobooth_clean": true,
           "all_thunderbolt_ports_charge_and_data": true,
           "magsafe_engages_disengages_cleanly": true,
-          "hdmi_test": "skipped — no cable available",
-          "sdxc_test": "skipped — no card available",
+          "hdmi_test": "skipped, no cable available",
+          "sdxc_test": "skipped, no card available",
           "bluetooth_pair_test": true
         }
       }

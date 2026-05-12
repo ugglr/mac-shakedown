@@ -2,8 +2,8 @@
 
 Every QA run produces two artifacts in `Reports/`:
 
-- **`<ISO-timestamp>.json`** — canonical machine-readable report. Stable, versioned schema. *This is what gets submitted to the future aggregator.*
-- **`<ISO-timestamp>.md`** — human-readable render of the JSON.
+- **`<ISO-timestamp>.json`**: canonical machine-readable report. Stable, versioned schema. *This is what gets submitted to the future aggregator.*
+- **`<ISO-timestamp>.md`**: human-readable render of the JSON.
 
 ## Top-level fields
 
@@ -23,7 +23,7 @@ Every QA run produces two artifacts in `Reports/`:
 | `store_location` | string\|null | no | Opt-in only. |
 | `purchase_date` | string\|null | no | Opt-in only. |
 
-## `unit` object — for cross-machine comparison
+## `unit` object: cross-machine comparison
 
 This is what the aggregator groups on for per-SKU baselines.
 
@@ -40,9 +40,9 @@ This is what the aggregator groups on for per-SKU baselines.
 | `storage_gb` | int | total NVMe capacity (informational) |
 | `macos_version` | string | e.g. `"macOS 16.3 (Tahoe)"` |
 | `kernel_version` | string | e.g. `"Darwin 26.3.0"` |
-| `serial_hash` | string | `"sha256:<hex>"` — hashed by `inventory.sh`. See "Hash caveat" under Privacy below. |
+| `serial_hash` | string | `"sha256:<hex>"`, hashed by `inventory.sh`. See "Hash caveat" under Privacy below. |
 | `serial_number` | string | **only present** if user set `INCLUDE_PLAINTEXT_SERIAL=1`. When present, `./run` sets `submission_safe: false` on the local copy and refuses to write the submission copy. |
-| `power_adapter` | object\|null | `{name, wattage, connected, charging}` from SPPowerDataType — relevant for sustained-perf headroom. |
+| `power_adapter` | object\|null | `{name, wattage, connected, charging}` from SPPowerDataType, relevant for sustained-perf headroom. |
 
 ## Each phase's shape
 
@@ -59,7 +59,7 @@ Every entry in `phases` follows the same shape:
 
 `verdict_reasons` lists every fail and warn signal that fired, plus advisory info. Empty / single-entry "within healthy range" line on a clean PASS.
 
-## Phase 4 (`4_cpu_variance`) — full detail
+## Phase 4 (`4_cpu_variance`): full detail
 
 Produced by `cpu-variance.sh`. Comparable across submissions when grouped by `unit.chip` + `unit.memory_gb` + `unit.perf_cores`.
 
@@ -88,15 +88,15 @@ Produced by `cpu-variance.sh`. Comparable across submissions when grouped by `un
     "worker_imbalance_pct_per_iter": [0.4, 0.6, 0.3, 0.5, 0.4],
     "median_worker_imbalance_pct": 0.4,
     "max_worker_imbalance_pct": 0.6,
-    "workload": "sha256-parallel (hardware-accelerated on Apple Silicon — see script header CAVEAT)"
+    "workload": "sha256-parallel (hardware-accelerated on Apple Silicon; see script header CAVEAT)"
   },
   "verdict_reasons": [
-    "spread 0.41%, ratio 1.00×, decline 0.21% — within healthy range"
+    "spread 0.41%, ratio 1.00×, decline 0.21%, within healthy range"
   ]
 }
 ```
 
-## Phase 5 (`5_thermal_load`) — full detail
+## Phase 5 (`5_thermal_load`): full detail
 
 Produced by `thermal-load.sh`. Includes ambient temp for cross-machine comparison.
 
@@ -144,11 +144,11 @@ Reports default to submission-safe:
 - **`_raw_*` fields** in the inventory and battery sub-blocks contain the full `system_profiler` / `ioreg` dumps and may include paired Bluetooth device IDs, Wi-Fi SSIDs, USB device serials, etc. `./run` strips these from the submission copy and keeps them only in the local `Reports/local/*.json`. **`submission_safe: true`** asserts they're stripped.
 - **`submission_safe: true`** is the orchestrator's assertion that no PII has snuck in. If the user passes `--notes "…"`, the orchestrator flips this to `false` since notes may contain identifying info.
 
-### Hash caveat — obfuscation, not anonymization
+### Hash caveat: obfuscation, not anonymization
 
 The `serial_hash` is SHA-256 of the plaintext serial **without a salt**. Apple's serial number space has limited entropy (post-2010 format: ~3 chars location/year/week + ~4 chars unique + ~4 chars model = roughly 10⁸ realistic combinations per chassis SKU). A determined aggregator with the report's `unit.model_identifier` and `unit.chip` can rainbow-table the original serial in seconds.
 
-The hash is genuinely useful for **deduplication** — the aggregator can detect repeat submissions of the same unit without storing serials. It is **not** anonymization. Treat `submission_safe: true` as "no plaintext PII," not "untraceable."
+The hash is genuinely useful for **deduplication**: the aggregator can detect repeat submissions of the same unit without storing serials. It is **not** anonymization. Treat `submission_safe: true` as "no plaintext PII," not "untraceable."
 
 A future hosted aggregator should rotate to HMAC-SHA-256 with a per-deployment secret, so the aggregator-side dedup works but external attackers can't recover the serial. Until that lands, the threat model is: aggregator operator can recover serials; everyone else can't.
 

@@ -3,7 +3,7 @@ created: 2026-04-29
 tags: [research, overview]
 ---
 
-# M5 Quality Issues — Overview
+# M5 Quality Issues: Overview
 
 High-level summary of known issues with the 2026 M5 / M5 Pro / M5 Max MacBook Pro line, as of **2026-04-29**.
 
@@ -11,19 +11,19 @@ High-level summary of known issues with the 2026 M5 / M5 Pro / M5 Max MacBook Pr
 
 | Issue | Severity | Scope | Detectable on-site? |
 |---|---|---|---|
-| [M5 Max performance variance (bad batches)](Issues/Performance%20Variance.md) | **High** — up to 41.5% multi-core variance | Specific production lots, M5 Max | Only with sustained benchmark runs |
-| [Thermal throttling on 14"](Issues/Thermal%20Throttling.md) | Medium — design limit, not defect | All 14" M5 Max | Yes, with sustained load + temp monitoring |
+| [M5 Max performance variance (bad batches)](Issues/Performance%20Variance.md) | **High**, up to 41.5% multi-core variance | Specific production lots, M5 Max | Only with sustained benchmark runs |
+| [Thermal throttling on 14"](Issues/Thermal%20Throttling.md) | Medium, design limit, not defect | All 14" M5 Max | Yes, with sustained load + temp monitoring |
 | [Battery defects](Issues/Battery%20Defects.md) | Medium | Late 2025 / early 2026 batches | Partial (battery health %, full discharge cycle) |
-| [Hinge / palmrest creak](Issues/Hinge%20&%20Palmrest%20Creak.md) | Low–Medium | Isolated reports | Yes — manual inspection |
-| [Display defects](Issues/Display.md) (dead pixels, uneven backlight) | Low | Isolated | Yes — color/black field tests |
-| [Speakers, ports, Wi-Fi, mic, camera](Issues/Other%20Reported%20Issues.md) | Low | Isolated | Yes — functional tests |
+| [Hinge / palmrest creak](Issues/Hinge%20&%20Palmrest%20Creak.md) | Low–Medium | Isolated reports | Yes, manual inspection |
+| [Display defects](Issues/Display.md) (dead pixels, uneven backlight) | Low | Isolated | Yes, color/black field tests |
+| [Speakers, ports, Wi-Fi, mic, camera](Issues/Other%20Reported%20Issues.md) | Low | Isolated | Yes, functional tests |
 
 ## What's confirmed vs. anecdotal
 
 **Confirmed by multiple outlets:**
 - M5 Max performance inconsistency in some batches (Wccftech, Ubergizmo, Notebookcheck)
 - Thermal throttling on 14" chassis under sustained M5 Max load (Notebookcheck review)
-- Repairability worsened — more parts paired to logic board, battery replacement requires top-case swap (iFixit)
+- Repairability worsened (more parts paired to logic board, battery replacement requires top-case swap; iFixit)
 
 **Anecdotal but credible (multiple users, single-source reports):**
 - Battery drain / poor battery life on certain units (Apple Discussions, Technobezz)
