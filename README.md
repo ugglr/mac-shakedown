@@ -39,7 +39,7 @@ Or without a preset, which auto-detects chassis class from `system_profiler` (fi
 ./run
 ```
 
-The orchestrator runs the four automated phases (preflight → inventory → battery → CPU variance → thermal load), asks for sudo once upfront (Phase 5 needs `powermetrics`), and writes a SCHEMA-compliant report to `Reports/local/` plus a sanitized PR-able copy to `Reports/submissions/`. Runtime ~18 min on Intel, ~25 min on Air, ~45 min on MacBook Pro.
+The orchestrator runs the six automated phases (preflight → inventory → battery → race benchmark → SSD test → CPU variance → thermal load), asks for sudo once upfront (Phase 5 and the SSD page-cache drop need it), and writes a SCHEMA-compliant report to `Reports/local/` plus a sanitized PR-able copy to `Reports/submissions/`. Runtime ~20 min on Intel, ~27 min on Air, ~47 min on MacBook Pro.
 
 `./run --no-sudo` skips the 10-min thermal phase (the only phase that needs sudo) for a half-runtime no-password variance-only pass.
 
@@ -59,12 +59,16 @@ See [`examples/sample-report-illustrative/`](examples/sample-report-illustrative
 | 1 | Hardware identity vs. target | `system_profiler` + `sysctl` → `inventory.sh` |
 | 2 | Battery health (cycles, capacity, condition) | `ioreg AppleSmartBattery` → `battery.sh` |
 | 3 | Sensor & port inventory | (uses Phase 1 output) |
+| 10 | Race benchmark (cold) | `xz -9 -T<P>` of a 200 MB random blob → `race-bench.sh` |
+| 11 | SSD sequential read/write (cold) | 2 GB incompressible random data, page cache dropped between → `ssd-test.sh` |
 | 4 | **CPU performance variance** | 5 s burst + chassis-class-aware warmup (300 s on Pro, 60 s on Air) + 5 × 60 s timed iterations, parallel SHA-256 → `cpu-variance.sh` |
 | 5 | Sustained thermal load (chassis-class-aware thresholds) | 10 min continuous + `powermetrics` sampling → `thermal-load.sh` |
 | 6 | Display visual inspection | fullscreen color cycle in Safari → `display-test.sh` |
 | 7 | Manual physical inspection | hinge, keyboard, speakers, ports, Touch ID, etc. (runbook checklist) |
 | 8 | Apple Diagnostics | reboot + Cmd-D |
 | 9 | Optional idle drain | 30 min sleep, measure %/30 min |
+
+Phases 10 (race) and 11 (SSD) run before the heavy phases so the chassis is cold. They produce calibration numbers (verdict `"info"`); pass/fail thresholds land in schema v0.3 once the submission corpus is non-empty. Unlike Phase 4 (SHA-256, hardware-accelerated), Phase 10 (LZMA) is fair across chassis families since it doesn't hit any crypto coprocessor.
 
 ## Specifying your target
 
@@ -111,6 +115,8 @@ mac-shakedown/
 │       ├── run-shakedown.sh        # the orchestrator (`./run` execs this)
 │       ├── inventory.sh            # system_profiler + sysctl → JSON
 │       ├── battery.sh              # ioreg battery health → JSON
+│       ├── race-bench.sh           # cold xz race → JSON
+│       ├── ssd-test.sh             # sequential SSD read/write → JSON (sudo for purge)
 │       ├── cpu-variance.sh         # burst + warmup + 5×60s timed iters → JSON
 │       ├── thermal-load.sh         # 10-min sustained + powermetrics → JSON (sudo)
 │       └── display-test.sh         # fullscreen color cycle (HTML)
@@ -170,7 +176,7 @@ The manual phases (display, physical inspection, Apple Diagnostics, idle drain) 
 - **Hosted aggregator.** Eventually, submission via API to a public site so reports aren't reviewed by hand. Until then, the PR-submission flow above *is* the aggregator. Slower, but no infra, and PR review catches PII before merge.
 - **Non-accelerated workload pass.** Optional Phase 4b that runs a workload without hardware acceleration (e.g. unaccelerated AES, BLAKE2b in pure Python, or a pinned matrix-multiply kernel) so the test stresses integer pipelines and memory bandwidth too. Catches batch defects that don't show up under SHA-NI / Apple Silicon's crypto engines.
 - **GPU variance test.** Currently CPU-only. M5 Max GPU is the bigger thermal contributor and a Metal compute load would be much more aggressive than CPU SHA-256.
-- **NVMe SSD performance.** Currently we only check SMART status. Apple has shipped 256 GB single-die SSD perf regressions on past gens, worth catching.
+- **NVMe SSD performance thresholds.** Wave 6 added sequential read/write measurement (Phase 11). Numbers are informational in v0.2; chassis-family pass/fail thresholds land in v0.3 once the submission corpus has baselines. Apple has shipped 256 GB single-die SSD perf regressions on past gens, worth catching.
 - **Memory bandwidth.** STREAM-style benchmark.
 - **Per-core pinning.** macOS lacks public CPU affinity APIs, so we can't pin workers to specific cores. A defective single core gets averaged out across N P-cores. Reporting `worker_imbalance_pct_per_iter` is a partial mitigation; investigating workarounds (ASIA-style fence, pthread_qos hints) is on the list.
 - **More generation calibrations.** Apple Silicon M1–M4 (the scripts work today; only the calibration notes and target presets need filling), Intel-era issues (T2 chip, butterfly keyboards 2018–19, GPU stutter 2019).

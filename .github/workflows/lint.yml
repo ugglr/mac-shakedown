@@ -69,7 +69,8 @@ jobs:
                           "submission_safe"]
           REQUIRED_PHASES = ["0_preflight", "1_inventory", "2_battery", "3_sensors",
                               "4_cpu_variance", "5_thermal_load", "6_display",
-                              "7_physical", "8_apple_diagnostics", "9_idle_drain"]
+                              "7_physical", "8_apple_diagnostics", "9_idle_drain",
+                              "10_race_bench", "11_ssd_test"]
           FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+-[0-9a-f]{4}\.json$")
 
           def find_keys(obj, predicate, path=""):

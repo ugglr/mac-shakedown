@@ -9,7 +9,7 @@ Every QA run produces two artifacts in `Reports/`:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `schema_version` | string | yes | Semver of the schema. Currently `"1.0"`. |
+| `schema_version` | string | yes | Semver of the schema. Currently `"1.1"`. |
 | `shakedown_version` | string | yes | Tool version that produced the report (e.g. `"0.1.0"`). |
 | `timestamp` | string | yes | ISO 8601 UTC. |
 | `illustrative` | bool | no | `true` for hand-crafted samples (under `examples/sample-report-*`). Aggregator must filter these out. |
@@ -136,6 +136,75 @@ The `intel_*` fields are populated only on Intel Macs (where the chassis class i
 
 `raw_log_path` points at a per-user tempfile under `/var/folders/...`. `./run` strips it from the canonical submission JSON.
 
+## Phase 10 (`10_race_bench`): full detail
+
+Produced by `race-bench.sh`. Fixed-work CPU race: compresses a 200 MB incompressible random blob with `xz -9 -T<P-cores>`. Unlike Phase 4 (SHA-256, hardware-accelerated on Apple Silicon), this workload is a fair cross-chassis-family comparison since LZMA does not benefit from SHA-NI or the Apple crypto coprocessor.
+
+```json
+{
+  "verdict": "info",
+  "duration_s": 42,
+  "details": {
+    "workload": "xz -9 -T12 compression of 200MB random data",
+    "blob_size_mb": 200,
+    "threads": 12,
+    "preset": 9,
+    "wall_seconds": 42.317,
+    "input_bytes": 209715200,
+    "output_bytes": 209665024,
+    "compression_ratio": 0.9998,
+    "throughput_mb_per_s": 4.73,
+    "data_quality": "ok",
+    "data_quality_notes": []
+  },
+  "verdict_reasons": [
+    "compressed 200MB in 42.32s (4.7 MB/s, output 100.0% of input)",
+    "informational in v0.2; calibrated pass/fail thresholds land in v0.3"
+  ]
+}
+```
+
+Race numbers are informational in v0.2: there are no chassis-family thresholds yet. Once submissions populate a baseline corpus, v0.3 sets pass/fail bands per chassis family.
+
+`verdict: "skipped"` if `xz` is not on PATH (pre-Catalina) or `xz` returned a non-zero exit code.
+
+## Phase 11 (`11_ssd_test`): full detail
+
+Produced by `ssd-test.sh`. Sequential write+read benchmark on incompressible random data, with page cache dropped (`sudo purge`) between write and read.
+
+```json
+{
+  "verdict": "info",
+  "duration_s": 8,
+  "details": {
+    "workload": "sequential write+read of 2GB incompressible random data",
+    "size_gb": 2,
+    "chunk_mb": 8,
+    "write_seconds": 4.213,
+    "write_mb_per_s": 485.7,
+    "page_cache_dropped": true,
+    "read_seconds": 3.892,
+    "read_mb_per_s": 525.8,
+    "data_quality": "ok",
+    "data_quality_notes": []
+  },
+  "verdict_reasons": [
+    "write 486 MB/s, read 526 MB/s",
+    "informational in v0.2; calibrated pass/fail thresholds land in v0.3"
+  ]
+}
+```
+
+Why incompressible random data: APFS transparently compresses zero-blocks, so `dd if=/dev/zero` writes report fictional throughput (the OS never touches the SSD for compressible sections). The script generates one 8 MB random chunk via `os.urandom` and writes it repeatedly.
+
+Why `sudo purge` between write and read: without dropping the page cache, the read measures RAM bandwidth (~10–50 GB/s on modern Macs), not SSD. In `--no-sudo` mode, the phase still runs but `page_cache_dropped: false` and `data_quality: "few_samples"` flag the inflated read number.
+
+`verdict: "skipped"` if free disk space is less than 2× the test size.
+
+## Note on phase key ordering
+
+The phase keys (`0_preflight`, `1_inventory`, ... `10_race_bench`, `11_ssd_test`) sort alphabetically rather than numerically (`10` comes before `2` lexicographically). JSON output preserves the orchestrator's insertion order so human-readable reports render in run order: preflight, inventory, battery, sensors, race, ssd, cpu_variance, thermal_load, then the skipped manual phases. Parsers iterating phase names should not assume numeric sort order.
+
 ## Privacy / submission-safety
 
 Reports default to submission-safe:
@@ -159,3 +228,8 @@ A future hosted aggregator should rotate to HMAC-SHA-256 with a per-deployment s
 - **Major bumps (1.0 → 2.0)** are breaking. Aggregator must explicitly support each major version.
 
 If a test methodology changes (e.g. variance test gains a new metric, or thresholds shift), bump at least the patch version and document the change in [CHANGELOG.md](../CHANGELOG.md). Methodology changes that affect comparability across submissions should bump the minor or major.
+
+### History
+
+- **1.0** → initial release schema (phases 0-9).
+- **1.1** → added phases 10_race_bench and 11_ssd_test (informational; pass/fail thresholds pending v0.3 calibration corpus). Backward compatible: reports without these phases still validate as 1.0 shape.

@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added: performance benchmarks (wave 6)
+
+- **Phase 10 race benchmark (`race-bench.sh`).** Compresses a 200 MB incompressible random blob with `xz -9 -T<P-cores>` and reports wall-clock seconds plus MB/s throughput. Unlike Phase 4 (SHA-256, hardware-accelerated on Apple Silicon), LZMA is a general-purpose CPU workload that does not benefit from SHA-NI or Apple's crypto coprocessor, so the number is comparable across chassis families. Runs cold (before Phase 4) so boost headroom isn't already burned. Skipped gracefully if `xz` isn't on PATH.
+- **Phase 11 SSD sequential read/write (`ssd-test.sh`).** Writes 2 GB of incompressible random data, drops the page cache via `sudo purge`, reads it back. Reports write_mb_per_s and read_mb_per_s. Uses `os.urandom`-generated random chunks since APFS transparently compresses zeros (a `dd if=/dev/zero` write would report fictional throughput). Free-space safety: skipped if less than 2× test size available. In `--no-sudo` mode the phase still runs with `ALLOW_NO_PURGE=1` but `page_cache_dropped: false` flags the read number as RAM-speed not SSD-speed.
+- **Schema bump to 1.1.** New phases are additive. Backward compatible: pre-1.1 reports validate against the 1.0 shape. CI submission audit now requires the two new phase keys; legacy submissions need to be re-run on wave-6 to pass.
+- **Race + SSD verdicts are `"info"` in v0.2.** No pass/fail thresholds yet (calibration corpus is empty). Numbers contribute to the corpus; v0.3 sets chassis-family thresholds once enough submissions accumulate.
+- **Run time impact.** Adds ~1.5 min total. Phase 10 is 30-60 s depending on chassis; Phase 11 is ~10-15 s on Apple Silicon SSDs.
+
 ### Removed
 
 - **`AGENTS.md` and `CLAUDE.md`**. The orchestrator (`./run`) handles all the automated phases end-to-end without an LLM, sudo and the y/N confirmation prompt mean an agent can't actually drive `./run` anyway, and the manual phases (display test, physical inspection, Apple Diagnostics, idle drain) are checklist work that a runbook covers directly. The cross-tool agent convention added churn without enabling anything. All agent framing dropped from README, Runbook, CONTRIBUTING, SECURITY, Reports/SCHEMA, targets/README, examples/m5-2026/README, Shakedown Brain, bug-report template, and cpu-variance.sh comments.
@@ -78,7 +86,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 - The methodology has not yet been validated against a confirmed-defective unit. Thresholds are derived from public reports and a small number of presumed-good runs.
 - Phase 4 uses SHA-256 which is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. It stresses the SHA engines, scheduling, and thermal mass, but not the integer pipelines or memory bandwidth that Cinebench / Geekbench probe more thoroughly. The variance methodology transfers cleanly to any sustained workload; the SHA choice is for zero-install portability. A non-accelerated workload pass is on the roadmap.
-- GPU not yet covered. Memory bandwidth not yet covered. NVMe SSD performance not yet covered (only SMART status).
+- GPU not yet covered. Memory bandwidth not yet covered.
+- NVMe SSD sequential read/write covered as of wave 6 (Phase 11), but the numbers are informational only in v0.2; chassis-family thresholds land in v0.3.
 - 14" and 16" MBP currently share the `active-cooled-pro` threshold table. The calibration's [Thermal Throttling note](examples/m5-2026/Issues/Thermal%20Throttling.md) describes 14" M5 Max throttling as design behavior, so a working 14" may land in the warn band of the current thresholds. A separate 14" sub-class is on the roadmap.
 
 ## [0.1.0] 2026-04-30
