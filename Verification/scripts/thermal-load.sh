@@ -381,6 +381,15 @@ else:
                 "no fan data captured by powermetrics (clamshell / sampler quirk?) — "
                 "verify fan engagement manually"
             )
+        elif min(fan_avgs) > 3000:
+            # Cooling was engaged throughout the run — high absolute RPM from the
+            # start means the chassis was heat-soaked from the preceding variance
+            # phase, or the user has fan curves manually set high. Either way the
+            # "didn't ramp" check (max-min < 200) would false-positive.
+            data_quality_notes.append(
+                f"fans pinned high throughout (min {min(fan_avgs):.0f} RPM) — "
+                f"ramp check skipped, cooling clearly engaged"
+            )
         elif max(fan_avgs) - min(fan_avgs) < 200:
             if chassis == "desktop":
                 fail_signals.append(
