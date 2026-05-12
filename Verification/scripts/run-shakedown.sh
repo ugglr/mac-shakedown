@@ -211,9 +211,9 @@ fi
 
 if [[ -z "${SHAKEDOWN_YES:-}" ]]; then
   if [[ "$NO_SUDO" -eq 1 ]]; then
-    duration_hint="~8 min of sustained 100% CPU load (Phase 4 variance)"
+    duration_hint="~10 min total: race + SSD benchmarks (~1.5 min) plus Phase 4 variance (~8 min)"
   else
-    duration_hint="~18 min of sustained 100% CPU load (Phase 4 variance + Phase 5 thermal)"
+    duration_hint="~20 min total: race + SSD benchmarks (~1.5 min) plus Phase 4 variance (~8 min) plus Phase 5 thermal (~10 min)"
   fi
   cat <<INFO >&2
 
@@ -253,6 +253,8 @@ trap 'if [[ -n "$HEARTBEAT_PID" ]]; then kill "$HEARTBEAT_PID" 2>/dev/null || tr
 PREFLIGHT_TXT="$WORK/preflight.txt"
 INVENTORY_JSON="$WORK/inventory.json"
 BATTERY_JSON="$WORK/battery.json"
+RACE_JSON="$WORK/race.json"
+SSD_JSON="$WORK/ssd.json"
 VARIANCE_JSON="$WORK/variance.json"
 THERMAL_JSON="$WORK/thermal.json"
 
@@ -273,6 +275,19 @@ ignite "Phase 1 — inventory"
 
 ignite "Phase 2 — battery"
 "$SCRIPT_DIR/battery.sh" > "$BATTERY_JSON"
+
+# Run race + SSD benchmarks while the chassis is still cold. Cold race captures
+# peak boost throughput unobscured by thermal saturation. SSD numbers are
+# similarly cleaner before NVMe controllers warm up under chassis heat soak.
+ignite "Phase 10 — race benchmark (xz compression, ~30-60s)"
+"$SCRIPT_DIR/race-bench.sh" > "$RACE_JSON"
+
+ignite "Phase 11 — SSD sequential read/write (~30s)"
+if [[ "$NO_SUDO" -eq 1 ]]; then
+  ALLOW_NO_PURGE=1 "$SCRIPT_DIR/ssd-test.sh" > "$SSD_JSON"
+else
+  "$SCRIPT_DIR/ssd-test.sh" > "$SSD_JSON"
+fi
 
 ignite "Phase 4 — CPU variance (~6-10 min depending on chassis)"
 start_heartbeat
@@ -301,6 +316,8 @@ python3 - \
   "$PREFLIGHT_TXT" \
   "$INVENTORY_JSON" \
   "$BATTERY_JSON" \
+  "$RACE_JSON" \
+  "$SSD_JSON" \
   "$VARIANCE_JSON" \
   "$THERMAL_JSON" \
   "$REPO_ROOT/Reports/local" \
@@ -315,11 +332,12 @@ import os
 import re
 import sys
 
-(target_file, preflight_txt, inv_path, bat_path, var_path, thr_path,
- local_dir, submissions_dir, target_name, notes) = sys.argv[1:11]
+(target_file, preflight_txt, inv_path, bat_path, race_path, ssd_path,
+ var_path, thr_path,
+ local_dir, submissions_dir, target_name, notes) = sys.argv[1:13]
 
 SHAKEDOWN_VERSION = "0.1.0"
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 def load(path):
     with open(path) as f:
@@ -328,6 +346,8 @@ def load(path):
 target = load(target_file) if target_file else None
 inventory = load(inv_path)
 battery = load(bat_path)
+race = load(race_path)
+ssd = load(ssd_path)
 variance = load(var_path)
 thermal = load(thr_path)
 
@@ -481,6 +501,17 @@ thermal_verdict = thermal.get("verdict", "fail")
 thermal_reasons = thermal.get("verdict_reasons") or []
 thermal_details = {k: v for k, v in thermal.items() if k not in ("verdict", "verdict_reasons", "raw_log_path")}
 
+# Race + SSD benchmarks default to "info" verdict in v0.2 (no pass/fail
+# thresholds yet — they're calibration inputs). "info" is treated as not-failing
+# and not-warning in the overall result computation below.
+race_verdict = race.get("verdict", "info")
+race_reasons = race.get("verdict_reasons") or []
+race_details = {k: v for k, v in race.items() if k not in ("verdict", "verdict_reasons")}
+
+ssd_verdict = ssd.get("verdict", "info")
+ssd_reasons = ssd.get("verdict_reasons") or []
+ssd_details = {k: v for k, v in ssd.items() if k not in ("verdict", "verdict_reasons")}
+
 skipped_phases = {
     "6_display": "run ./Verification/scripts/display-test.sh and fill in manual_responses",
     "7_physical": "follow Runbook Phase 7 manual checklist",
@@ -535,6 +566,8 @@ phases = {
     "1_inventory": phase_block(inv_verdict, 1, {"asserts": inv_asserts}, inv_reasons or ["target asserts matched"]),
     "2_battery": phase_block(bat_verdict, 1, battery_details, bat_reasons),
     "3_sensors": phase_block(sensors_verdict, 1, {"expected_present": present, "missing": missing}, sensors_reasons),
+    "10_race_bench": phase_block(race_verdict, int(race_details.get("wall_seconds") or 0), race_details, race_reasons),
+    "11_ssd_test": phase_block(ssd_verdict, int((ssd_details.get("write_seconds") or 0) + (ssd_details.get("read_seconds") or 0)), ssd_details, ssd_reasons),
     "4_cpu_variance": phase_block(variance_verdict, variance_details.get("warmup_sec", 0) + variance_details.get("iterations", 0) * variance_details.get("seconds_per_iter", 0) + variance_details.get("burst_sec", 0), variance_details, variance_reasons),
     "5_thermal_load": phase_block(thermal_verdict, thermal_details.get("duration_s", 600), thermal_details, thermal_reasons),
 }
