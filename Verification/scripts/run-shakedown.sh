@@ -111,6 +111,27 @@ PYEOF
 fi
 export CHASSIS_CLASS
 
+ignite() {
+  # Build-up flame animation before a phase. ~700 ms total — short enough that
+  # it doesn't pad the run, long enough to give the eye a transition. Falls
+  # back to a plain echo when stderr isn't a TTY (CI, piped logs).
+  if [[ ! -t 2 ]]; then
+    echo "shakedown: $*" >&2
+    return
+  fi
+  local label="$*"
+  local R=$'\033[91m'
+  local B=$'\033[1;31m'
+  local X=$'\033[0m'
+  local cl=$'\r\033[K'
+  local frames=('▁' '▂' '▃' '▄ ▁' '▅ ▂' '▆ ▃ ▁' '▇ ▄ ▂' '█ ▅ ▃ ▁' '▇ ▆ ▄ ▂' '█ ▇ ▅ ▃')
+  for f in "${frames[@]}"; do
+    printf '%s%s%s%s' "$cl" "$R" "$f" "$X" >&2
+    sleep 0.07
+  done
+  printf '%s%s██  %s%s\n' "$cl" "$B" "$label" "$X" >&2
+}
+
 banner() {
   if [[ ! -t 2 ]]; then return; fi
   local Y=$'\033[93m'      # bright yellow (wisps)
@@ -192,7 +213,7 @@ BATTERY_JSON="$WORK/battery.json"
 VARIANCE_JSON="$WORK/variance.json"
 THERMAL_JSON="$WORK/thermal.json"
 
-echo "shakedown: Phase 0 — preflight (1 min)"
+ignite "Phase 0 — preflight"
 {
   echo "=== uptime ==="
   uptime
@@ -204,22 +225,22 @@ echo "shakedown: Phase 0 — preflight (1 min)"
   networksetup -getairportpower en0 2>/dev/null || echo "(no en0)"
 } > "$PREFLIGHT_TXT" 2>&1
 
-echo "shakedown: Phase 1 — inventory"
+ignite "Phase 1 — inventory"
 "$SCRIPT_DIR/inventory.sh" > "$INVENTORY_JSON"
 
-echo "shakedown: Phase 2 — battery"
+ignite "Phase 2 — battery"
 "$SCRIPT_DIR/battery.sh" > "$BATTERY_JSON"
 
-echo "shakedown: Phase 4 — CPU variance (~6-10 min depending on chassis)"
+ignite "Phase 4 — CPU variance (~6-10 min depending on chassis)"
 "$SCRIPT_DIR/cpu-variance.sh" > "$VARIANCE_JSON"
 
 if [[ "$NO_SUDO" -eq 1 ]]; then
-  echo "shakedown: Phase 5 — skipped (--no-sudo)"
+  ignite "Phase 5 — skipped (--no-sudo)"
   cat > "$THERMAL_JSON" <<EOF
 {"verdict":"skipped","verdict_reasons":["--no-sudo: thermal phase needs powermetrics + sudo"],"chassis_class":"$CHASSIS_CLASS","duration_s":0,"data_quality":"skipped"}
 EOF
 else
-  echo "shakedown: Phase 5 — sustained thermal load (~10 min, needs sudo)"
+  ignite "Phase 5 — sustained thermal load (~10 min, needs sudo)"
   # shellcheck disable=SC2024  # the redirect target is a user-owned tempdir, not privileged.
   sudo CHASSIS_CLASS="$CHASSIS_CLASS" "$SCRIPT_DIR/thermal-load.sh" > "$THERMAL_JSON"
 fi
