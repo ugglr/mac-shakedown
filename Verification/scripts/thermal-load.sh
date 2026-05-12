@@ -167,17 +167,26 @@ for blk in blocks:
         # Apple Silicon combined power
         m = re.search(r"Combined Power \(CPU \+ GPU \+ ANE\):\s+([\d.]+)\s*mW", line)
         if m: sd["combined_power_mw"] = float(m.group(1))
-        # Intel: per-CPU frequency lines look like "CPU 0 frequency: 3192 MHz"
-        m = re.search(r"^\s*CPU\s+\d+\s+frequency:\s+(\d+)\s+MHz", line)
+        # Intel frequency — two formats across macOS versions:
+        #   Sonoma+: "CPU Average frequency as fraction of nominal: 72.40% (1882.29 Mhz)"
+        #            (the CPU number is on the preceding "CPU N duty cycles/s:" line)
+        #   Legacy:  "CPU 0 frequency: 3192 MHz" (one line per core)
+        # Case-insensitive on the Mhz/MHz spelling — Sonoma uses lowercase 'h'.
+        m = re.search(r"^\s*CPU Average frequency as fraction of nominal:\s+[\d.]+%\s*\(([\d.]+)\s*M[Hh]z\)", line)
+        if m: sd.setdefault("intel_cpu_freq_mhz", []).append(int(float(m.group(1))))
+        m = re.search(r"^\s*CPU\s+\d+\s+frequency:\s+(\d+)\s+M[Hh]z", line)
         if m: sd.setdefault("intel_cpu_freq_mhz", []).append(int(m.group(1)))
-        # Intel: package and IA-cores power
-        # Intel powermetrics emits power in W on most macOS versions, in mW on a few.
-        # Try both; normalize to mW internally.
-        m = re.search(r"Package Power:\s+([\d.]+)\s*(W|mW)\b", line)
+        # Intel package power — two formats:
+        #   Sonoma+: "Intel energy model derived package power (CPUs+GT+SA): 6.14W"
+        #   Legacy:  "Package Power: X W"
+        # Sonoma combines CPU+GT+SA into one number; legacy had separate IA / GT lines.
+        m = re.search(r"^\s*Intel energy model derived package power[^:]*:\s*([\d.]+)\s*(W|mW)\b", line)
         if m: sd["intel_package_power_mw"] = float(m.group(1)) * (1000.0 if m.group(2) == "W" else 1.0)
-        m = re.search(r"IA Cores Power:\s+([\d.]+)\s*(W|mW)\b", line)
+        m = re.search(r"^\s*Package Power:\s+([\d.]+)\s*(W|mW)\b", line)
+        if m: sd["intel_package_power_mw"] = float(m.group(1)) * (1000.0 if m.group(2) == "W" else 1.0)
+        m = re.search(r"^\s*IA Cores Power:\s+([\d.]+)\s*(W|mW)\b", line)
         if m: sd["intel_ia_cores_power_mw"] = float(m.group(1)) * (1000.0 if m.group(2) == "W" else 1.0)
-        m = re.search(r"GT Cores Power:\s+([\d.]+)\s*(W|mW)\b", line)
+        m = re.search(r"^\s*GT Cores Power:\s+([\d.]+)\s*(W|mW)\b", line)
         if m: sd["intel_gt_cores_power_mw"] = float(m.group(1)) * (1000.0 if m.group(2) == "W" else 1.0)
     if sd:
         samples.append(sd)
@@ -280,7 +289,7 @@ elif len(samples) < expected_min_samples:
     )
 if not p_freqs and data_quality == "ok":
     data_quality = "few_samples"
-    data_quality_notes.append("no P-cluster frequency data")
+    data_quality_notes.append("no CPU frequency data — powermetrics format may have changed")
 # Sanity: if powermetrics returned samples but the key metrics are entirely
 # absent (likely a macOS-version format change), surface it loudly.
 if samples and not cpu_temps:
