@@ -171,16 +171,19 @@ The v0.1 thresholds need real-world data to calibrate. If you ran the harness �
 There's no hosted backend; submissions land via PR.
 
 ```bash
-./Verification/scripts/run-shakedown.sh --target mbp-16-m5-max-64
+cd ~/mac-shakedown
+./run --target mbp-16-m5-max-64
 ```
 
 Or without a preset (for Macs that don't have one yet, or existing units you're self-testing rather than verifying as new):
 
 ```bash
-./Verification/scripts/run-shakedown.sh
+./run
 ```
 
-Without `--target`, chassis class is auto-detected from `system_profiler` (override with `CHASSIS_CLASS=intel-laptop ./Verification/scripts/run-shakedown.sh`), and the inventory + "is this factory-fresh?" battery asserts are skipped — real-degradation signals (battery capacity < 95%, abnormal condition, SSD SMART status) still fail the run.
+Without `--target`, chassis class is auto-detected from `system_profiler` (override with `CHASSIS_CLASS=intel-laptop ./run`), and the inventory + "is this factory-fresh?" battery asserts are skipped — real-degradation signals (battery capacity < 95%, abnormal condition, SSD SMART status) still fail the run.
+
+`./run --no-sudo` skips Phase 5 (the only phase that needs sudo), so you can run a no-password variance-only pass — about half the runtime.
 
 The orchestrator runs the auto-runnable phases (preflight → inventory → battery → CPU variance → thermal load), aggregates into a SCHEMA-compliant JSON, and writes two copies:
 

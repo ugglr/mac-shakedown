@@ -20,6 +20,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 TARGET=""
 NOTES=""
+NO_SUDO=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,14 +32,21 @@ while [[ $# -gt 0 ]]; do
       NOTES="${2:-}"
       shift 2
       ;;
+    --no-sudo|--skip-thermal)
+      NO_SUDO=1
+      shift
+      ;;
     -h|--help)
       cat <<HELP
-Usage: $(basename "$0") [--target <preset>] [--notes "free-form notes"]
+Usage: $(basename "$0") [--target <preset>] [--no-sudo] [--notes "free-form notes"]
 
   --target <preset>   optional. Target preset name (file under targets/ without .json)
                       e.g. mbp-16-m5-max-64, macbook-air-m5-16, mbp-16-intel-2019.
                       Without a target, inventory asserts are skipped — useful for
                       Macs that don't yet have a preset.
+  --no-sudo           skip Phase 5 (sustained thermal load) — that's the only phase
+                      that needs sudo. Phase 4 (variance) still runs and is the
+                      headline test. Alias: --skip-thermal.
   --notes "..."       optional free-form note to embed in the report. Setting any
                       note flips submission_safe to false (notes may contain PII).
 
@@ -103,14 +111,52 @@ PYEOF
 fi
 export CHASSIS_CLASS
 
-echo "shakedown: target=${TARGET:-<none>} chassis_class=$CHASSIS_CLASS"
+banner() {
+  if [[ ! -t 2 ]]; then return; fi
+  local Y=$'\033[93m'      # bright yellow (wisps)
+  local O=$'\033[33m'      # yellow (mid)
+  local R=$'\033[91m'      # bright red (base)
+  local B=$'\033[1;31m'    # bold red (letters)
+  local D=$'\033[2m'       # dim (subtitle)
+  local X=$'\033[0m'       # reset
+  cat >&2 <<BANNER
+
+${Y}     )         )         )         )         )         )         )${X}
+${Y}    ((        ((        ((        ((        ((        ((        ((${X}
+${O}    ))(       ))(       ))(       ))(       ))(       ))(       ))(${X}
+${R}   ((  ))    ((  ))    ((  ))    ((  ))    ((  ))    ((  ))    ((  ))${X}
+${R}    \\\\//      \\\\//      \\\\//      \\\\//      \\\\//      \\\\//      \\\\//${X}
+
+${B}███████ ██   ██  █████  ██   ██ ███████ ██████   ██████  ██     ██ ███    ██${X}
+${B}██      ██   ██ ██   ██ ██  ██  ██      ██   ██ ██    ██ ██     ██ ████   ██${X}
+${B}███████ ███████ ███████ █████   █████   ██   ██ ██    ██ ██  █  ██ ██ ██  ██${X}
+${B}     ██ ██   ██ ██   ██ ██  ██  ██      ██   ██ ██    ██ ██ ███ ██ ██  ██ ██${X}
+${B}███████ ██   ██ ██   ██ ██   ██ ███████ ██████   ██████   ███ ███  ██   ████${X}
+
+${D}         verify your new Mac before the return window closes${X}
+
+BANNER
+}
+
+banner
+
+if [[ "$NO_SUDO" -eq 1 ]]; then
+  echo "shakedown: target=${TARGET:-<none>} chassis_class=$CHASSIS_CLASS mode=--no-sudo (Phase 5 will be skipped)"
+else
+  echo "shakedown: target=${TARGET:-<none>} chassis_class=$CHASSIS_CLASS"
+fi
 
 if [[ -z "${SHAKEDOWN_YES:-}" ]]; then
+  if [[ "$NO_SUDO" -eq 1 ]]; then
+    duration_hint="~8 min of sustained 100% CPU load (Phase 4 variance)"
+  else
+    duration_hint="~18 min of sustained 100% CPU load (Phase 4 variance + Phase 5 thermal)"
+  fi
   cat <<INFO >&2
 
-About to run ~18 min of sustained 100% CPU load (Phase 4 variance + Phase 5
-thermal). Fans will spin up loud and the chassis will get hot. macOS throttles
-to protect the chip, so nothing dangerous — but expect a noisy 20 min.
+About to run $duration_hint. Fans will spin up loud and the chassis will get
+hot. macOS throttles to protect the chip, so nothing dangerous — but expect a
+noisy run.
 
 Set SHAKEDOWN_YES=1 to skip this prompt (e.g. for scripted runs).
 INFO
@@ -121,11 +167,24 @@ INFO
   fi
 fi
 
-echo "shakedown: requesting sudo upfront (thermal phase needs it)"
-sudo -v
+SUDO_KEEPALIVE_PID=""
+if [[ "$NO_SUDO" -ne 1 ]]; then
+  echo "shakedown: requesting sudo upfront (Phase 5 needs it)"
+  sudo -v
+  # Background keep-alive: refresh sudo credentials every 60s while the
+  # orchestrator is alive. macOS default sudo timestamp is 5 min, and Phase 4
+  # on Intel takes ~8 min — without this, the user gets a second password
+  # prompt mid-run.
+  ( while true; do
+      sleep 60
+      kill -0 "$$" 2>/dev/null || exit
+      sudo -n true 2>/dev/null || exit
+    done ) &
+  SUDO_KEEPALIVE_PID=$!
+fi
 
 WORK=$(mktemp -d -t shakedown-run)
-trap 'rm -rf "$WORK"' EXIT
+trap 'if [[ -n "$SUDO_KEEPALIVE_PID" ]]; then kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true; fi; rm -rf "$WORK"' EXIT
 
 PREFLIGHT_TXT="$WORK/preflight.txt"
 INVENTORY_JSON="$WORK/inventory.json"
@@ -154,9 +213,16 @@ echo "shakedown: Phase 2 — battery"
 echo "shakedown: Phase 4 — CPU variance (~6-10 min depending on chassis)"
 "$SCRIPT_DIR/cpu-variance.sh" > "$VARIANCE_JSON"
 
-echo "shakedown: Phase 5 — sustained thermal load (~10 min, needs sudo)"
-# shellcheck disable=SC2024  # the redirect target is a user-owned tempdir, not privileged.
-sudo CHASSIS_CLASS="$CHASSIS_CLASS" "$SCRIPT_DIR/thermal-load.sh" > "$THERMAL_JSON"
+if [[ "$NO_SUDO" -eq 1 ]]; then
+  echo "shakedown: Phase 5 — skipped (--no-sudo)"
+  cat > "$THERMAL_JSON" <<EOF
+{"verdict":"skipped","verdict_reasons":["--no-sudo: thermal phase needs powermetrics + sudo"],"chassis_class":"$CHASSIS_CLASS","duration_s":0,"data_quality":"skipped"}
+EOF
+else
+  echo "shakedown: Phase 5 — sustained thermal load (~10 min, needs sudo)"
+  # shellcheck disable=SC2024  # the redirect target is a user-owned tempdir, not privileged.
+  sudo CHASSIS_CLASS="$CHASSIS_CLASS" "$SCRIPT_DIR/thermal-load.sh" > "$THERMAL_JSON"
+fi
 
 echo "shakedown: aggregating into canonical report"
 
