@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Removed
+
+- **`AGENTS.md` and `CLAUDE.md`** — the orchestrator (`./run`) handles all the automated phases end-to-end without an LLM, sudo and the y/N confirmation prompt mean an agent can't actually drive `./run` anyway, and the manual phases (display test, physical inspection, Apple Diagnostics, idle drain) are checklist work that a runbook covers directly. The cross-tool agent convention added churn without enabling anything. All agent framing dropped from README, Runbook, CONTRIBUTING, SECURITY, Reports/SCHEMA, targets/README, examples/m5-2026/README, Shakedown Brain, bug-report template, and cpu-variance.sh comments.
+
 ### Added — calibration submission workflow
 
 - **`run-shakedown.sh` orchestrator** — wraps the four auto-runnable phases (inventory, battery, CPU variance, thermal load) end-to-end, prompts sudo upfront, aggregates into a SCHEMA-compliant JSON, and emits a sanitized submission copy alongside the full local copy. One command instead of five-plus, with the predictable `{YYYY-MM-DD}-{preset}-{hash4}.json` filename convention.

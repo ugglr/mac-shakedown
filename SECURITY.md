@@ -14,11 +14,11 @@ Shakedown runs entirely on the user's own Mac. The surface area is small: five s
 
 If you submit a report to the (planned) hosted aggregator:
 
-- **Serial numbers are SHA-256 hashed by default.** `inventory.sh` and `battery.sh` emit `serial_hash` instead of the raw serial. The plaintext is included only if you set `INCLUDE_PLAINTEXT_SERIAL=1` (in which case the agent flips `submission_safe` to `false`).
+- **Serial numbers are SHA-256 hashed by default.** `inventory.sh` and `battery.sh` emit `serial_hash` instead of the raw serial. The plaintext is included only if you set `INCLUDE_PLAINTEXT_SERIAL=1` — even then, `./run` keeps the plaintext in the local copy only and never writes it to the submission copy.
 - **The hash is obfuscation, not anonymization.** Apple's serial space has limited entropy (~10⁸ combinations per chassis SKU); a determined operator could rainbow-table the original. Use the hash for *deduplication* assumptions, not *untraceability*. A future aggregator deployment should rotate to HMAC-SHA-256 with a deployment-secret salt — see [`Reports/SCHEMA.md`](Reports/SCHEMA.md#hash-caveat--obfuscation-not-anonymization).
-- **`_raw_*` fields** in the inventory and battery JSON contain full `system_profiler` / `ioreg` dumps that may include paired Bluetooth device IDs, Wi-Fi SSIDs, USB device serials, and other environment fingerprints. The agent strips these before submission. They remain in the local per-phase artifacts under `Reports/<ts>-raw/*.json` for your own debugging.
+- **`_raw_*` fields** in the inventory and battery JSON contain full `system_profiler` / `ioreg` dumps that may include paired Bluetooth device IDs, Wi-Fi SSIDs, USB device serials, and other environment fingerprints. `./run` strips these from the submission copy. They remain in `Reports/local/<filename>.json` (gitignored) for your own debugging.
 - **`store_location`, `purchase_date`** are `null` by default and only populated if you opt in.
-- **`submission_safe: true`** is the agent's assertion that none of the above leaked through. Always check it before submitting.
+- **`submission_safe: true`** is the orchestrator's assertion that none of the above leaked through. Always check it before submitting.
 
 ## Reporting a vulnerability
 

@@ -5,11 +5,11 @@ tags: [verification, runbook]
 
 # QA Runbook
 
-The procedure followed by the agent (or by a human running manually). Each phase has a goal, an action, and a pass condition. See [Pass-Fail Criteria](Pass-Fail%20Criteria.md) for the consolidated thresholds and [the JSON report schema](../Reports/SCHEMA.md) for the canonical output format.
+The procedure for each verification phase. Phases 0–5 are automated by [`./run`](../README.md#quick-start); phases 6–9 are manual checks you step through yourself. Each phase has a goal, an action, and a pass condition. See [Pass-Fail Criteria](Pass-Fail%20Criteria.md) for the consolidated thresholds and [the JSON report schema](../Reports/SCHEMA.md) for the canonical output format.
 
 **Total time:** ~45 min on a MacBook Pro, ~25 min on a fanless Air, ~35 min on a desktop or Intel Mac, +30 min if you opt into the idle-drain test.
 
-> **Reads target from:** the user's invocation. If they passed `--target <name>` or "against target X", the agent loads `targets/<name>.json` and uses those assertions for Phase 1. Otherwise the agent asks for chip / RAM / chassis at start, or runs without assertions if the user opts out.
+> **Target preset.** Pass `--target <name>` to assert the unit matches the preset in `targets/<name>.json`. Without `--target`, the inventory asserts are skipped — useful for Macs that don't yet have a preset, or for self-testing an existing unit.
 
 ## Phase 0 — Pre-flight (1 min)
 
@@ -180,11 +180,11 @@ Frequency cliffs to base clock within 30 s under any chassis are the bad-batch /
 ./Verification/scripts/display-test.sh
 ```
 
-This opens an HTML page in the default browser. The agent prompts the user:
+This opens an HTML page in the default browser.
 
 > Press **F** to fullscreen, **Space** to start cycling. ← / → to navigate manually. **Esc** exits fullscreen, **Cmd-W** closes the tab when done.
 
-Walk through the colors with the user, asking for each:
+Walk through each color, asking yourself:
 
 | Color | Question to user |
 |---|---|
@@ -199,7 +199,7 @@ Record yes/no per color. Severe issues → fail. Minor mini-LED blooming around 
 
 ## Phase 7 — Manual physical inspection (~5 min)
 
-**Goal:** find build quality issues invisible to software. The agent asks the user one question at a time and records the answer.
+**Goal:** find build quality issues invisible to software. Step through each check:
 
 1. **Hinge creak.** Open and close the lid 3–4 times slowly. Open to ~110°. Press firmly on each palmrest corner. Twist the chassis gently. *Did you hear creaking?*
 
@@ -223,28 +223,15 @@ Record yes/no per color. Severe issues → fail. Minor mini-LED blooming around 
 
 11. **Bluetooth.** Pair any device (AirPods, phone). *Connects?*
 
-If any answer is "yes, there's an issue" the agent records it as a fail with severity per [Pass-Fail Criteria](Pass-Fail%20Criteria.md).
+If any answer is "yes, there's an issue", record it as a fail with severity per [Pass-Fail Criteria](Pass-Fail%20Criteria.md).
 
 ## Phase 8 — Apple Diagnostics (~5–10 min, includes reboot)
 
 **Goal:** Apple's own hardware self-test.
 
-> Before this phase, **write a partial JSON+MD report** to `Reports/<ts>.{json,md}` with progress so far, in case the session ends or the user closes the terminal during the reboot.
+Save your work. Reboot. As soon as the Mac powers off, **press and hold the power button** until "Loading startup options" appears. Release. Press **Cmd-D** (or follow the on-screen prompt for Diagnostics). Run the test.
 
-Prompt the user:
-
-> Save your work. Reboot. As soon as the Mac powers off, **press and hold the power button** until "Loading startup options" appears. Release. Press **Cmd-D** (or follow the on-screen prompt for Diagnostics). Run the test.
-
-When done, the user comes back to terminal and resumes the agent:
-
-```bash
-cd ~/mac-shakedown
-# Claude Code:
-claude continue   # or just `claude` and continue the conversation
-# Other agents: re-invoke per your tool's resume convention
-```
-
-The user reports the result code(s) or "no issues found." Pass = all clear. Any reference code = fail; cross-reference Apple's [diagnostic codes](https://support.apple.com/en-us/102713) in the report.
+Record the result code(s) or "no issues found." Pass = all clear. Any reference code = fail; cross-reference Apple's [diagnostic codes](https://support.apple.com/en-us/102713) in the report.
 
 ## Phase 9 — Optional idle drain test (~30 min)
 

@@ -1,15 +1,15 @@
 # Target presets
 
-Each `*.json` in this folder is a preset spec for a specific Mac SKU. When the agent runs the QA, you can specify a target preset to skip the manual config dialogue:
+Each `*.json` in this folder is a preset spec for a specific Mac SKU. Pass it to `./run` to assert the unit matches:
 
 ```bash
-claude "run QA against target mbp-16-m5-max-64"
+./run --target mbp-16-m5-max-64
 ```
 
-The agent loads the JSON, asserts against the unit, and references the preset's `calibration_dir` for known issues.
+`./run` loads the JSON, asserts chip / memory / model substrings against the unit, and references the preset's `calibration_dir` for known issues.
 
 If your config isn't here, either:
-- Run without a target and the agent will ask you for chip / RAM / chassis interactively, or
+- Run without `--target` — chassis class auto-detects, the SKU asserts are skipped, but the variance / thermal / battery checks still run, or
 - Add a new preset (see [CONTRIBUTING.md](../CONTRIBUTING.md#adding-a-target-preset))
 
 ## Schema

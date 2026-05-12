@@ -102,8 +102,6 @@ mac-shakedown/
 ├── SECURITY.md
 ├── LICENSE
 ├── run                             # convenience entry point — execs the orchestrator
-├── AGENTS.md                       # cross-tool agent convention (optional)
-├── CLAUDE.md                       # Claude Code auto-loader, points at AGENTS.md
 ├── Shakedown Brain.md              # Obsidian map-of-content (optional, for vault users)
 ├── .github/                        # issue + PR templates, CI lint workflow
 ├── Verification/                   # generation-agnostic test machinery

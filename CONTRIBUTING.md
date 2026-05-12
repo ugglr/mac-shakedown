@@ -7,9 +7,9 @@ Thanks for the interest. Shakedown grows in two directions:
 
 ## Adding a target preset
 
-A target preset lets users run `claude "run QA --target <name>"` instead of typing chip / RAM / chassis each time. They live in `targets/*.json`.
+A target preset lets users run `./run --target <name>` to assert the unit matches a specific SKU. They live in `targets/*.json`.
 
-**Schema** (minimal — agent fills in from the Mac's own report for everything else):
+**Schema** (minimal — the unit's own `system_profiler` output fills in everything else):
 
 ```json
 {
@@ -28,7 +28,7 @@ A target preset lets users run `claude "run QA --target <name>"` instead of typi
 | `chip_pattern` | Substring asserted against `system_profiler`'s `chip_type` |
 | `memory_gb` | Asserted against `sysctl hw.memsize` |
 | `model_must_include` | Substring asserted against `machine_model` (catches chassis size) |
-| `calibration_dir` | Path to the `examples/<generation>/` notes the agent should reference |
+| `calibration_dir` | Path to the `examples/<generation>/` notes for failure-analysis cross-reference |
 | `thermal_chassis_class` | One of `fanless`, `active-cooled-pro`, `desktop`, `intel-laptop`, `intel-desktop` — sets thermal thresholds and Phase 4 warmup duration. See [`targets/README.md`](targets/README.md) for the per-class definition. |
 
 Open a PR adding the JSON. Match an existing one for style.

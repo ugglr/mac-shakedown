@@ -18,7 +18,8 @@ body:
         - cpu-variance.sh
         - thermal-load.sh
         - display-test.sh
-        - Runbook / agent flow
+        - run-shakedown.sh (orchestrator)
+        - Runbook
         - Target preset loading
         - Report rendering (JSON/MD)
         - Other

@@ -2,7 +2,7 @@
 
 Worked example covering the 2026 Apple Silicon M5 generation — `Apple M5`, `M5 Pro`, and `M5 Max` across MacBook Air, MacBook Pro 14"/16", Mac mini, Mac Studio, and iMac. Most of the documented batch defects so far cluster around the **M5 Max** specifically (notably the multi-core performance variance described in [Issues/Performance Variance.md](Issues/Performance%20Variance.md)), but the surrounding context — display / battery / build quality / repairability — applies to the whole generation.
 
-This folder is **input to the agent** — it reads `M5 Quality Issues.md` and the per-issue notes in `Issues/` to interpret findings against documented batch defects, and to cite specific issues in failure reports.
+This folder is **the reference material for failure analysis** — when `./run` produces a WARN or FAIL verdict on a Mac whose target preset points here, read `M5 Quality Issues.md` and the relevant per-issue note to interpret the finding against documented batch defects.
 
 ## What's documented here
 
@@ -26,14 +26,11 @@ cp -r examples/m5-2026 examples/m6-2027
 # update the notes inside, then add a target preset that points at the new dir
 ```
 
-Calibrations are deliberately Markdown — meant to be read, edited, and discussed by humans, not parsed by code. The agent reads them via normal file-reading and applies judgment.
+Calibrations are deliberately Markdown — meant to be read, edited, and discussed by humans, not parsed by code.
 
-## How the agent uses this folder
+## How to use this folder
 
-When a target preset has `"calibration_dir": "examples/m5-2026"`, the agent:
-1. Reads `M5 Quality Issues.md` at session start to understand the defect landscape for this generation.
-2. Cross-references findings against `Issues/<topic>.md` when a phase produces WARN or FAIL.
-3. Cites the relevant note in the final report so the user has supporting evidence.
+When a target preset has `"calibration_dir": "examples/m5-2026"`, this folder is the documented defect landscape for that generation. After `./run` finishes, if any phase produced WARN or FAIL, open `M5 Quality Issues.md` and cross-reference against the relevant per-issue note in `Issues/` to decide whether the signal matches a known defect class.
 
 ## Variant scope
 

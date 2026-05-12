@@ -173,7 +173,7 @@ if len(throughputs) >= 4:
     decline_pct = round((early - late) / early * 100, 3) if early else None
 
 # Burst-to-steady ratio: ADVISORY. Without crowd-sourced calibration baseline
-# this is hard to interpret — record it for the agent / aggregator to judge.
+# this is hard to interpret — record it for the aggregator to judge.
 burst_to_steady_ratio = None
 if burst_throughput and burst_throughput > 0:
     burst_to_steady_ratio = round(mean / burst_throughput, 4)
@@ -222,7 +222,7 @@ if decline_pct is not None:
     elif decline_pct > 5:
         warn_signals.append(f"throughput declined {decline_pct:.1f}% in 5–10% warn range")
 
-# Burst-to-steady ratio — recorded as info, agent / aggregator interprets.
+# Burst-to-steady ratio — recorded as info, aggregator interprets.
 if burst_to_steady_ratio is not None and burst_to_steady_ratio > 0.97:
     info_signals.append(
         f"burst-to-steady {burst_to_steady_ratio:.2f}× — chassis gives back almost no thermal "
