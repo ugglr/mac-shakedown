@@ -19,7 +19,7 @@ Every QA run produces two artifacts in `Reports/`:
 | `phases` | object | yes | One key per phase (see Phase shape). |
 | `result` | string | yes | `"PASS"` / `"FAIL"`. |
 | `result_reason` | string | yes | One-line summary. |
-| `submission_safe` | bool | yes | Agent's assertion that no PII is present. |
+| `submission_safe` | bool | yes | Orchestrator's assertion that no PII is present. |
 | `store_location` | string\|null | no | Opt-in only. |
 | `purchase_date` | string\|null | no | Opt-in only. |
 
@@ -41,7 +41,7 @@ This is what the aggregator groups on for per-SKU baselines.
 | `macos_version` | string | e.g. `"macOS 16.3 (Tahoe)"` |
 | `kernel_version` | string | e.g. `"Darwin 26.3.0"` |
 | `serial_hash` | string | `"sha256:<hex>"` — hashed by `inventory.sh`. See "Hash caveat" under Privacy below. |
-| `serial_number` | string | **only present** if user set `INCLUDE_PLAINTEXT_SERIAL=1`. When present, agent sets `submission_safe: false`. |
+| `serial_number` | string | **only present** if user set `INCLUDE_PLAINTEXT_SERIAL=1`. When present, `./run` sets `submission_safe: false` on the local copy and refuses to write the submission copy. |
 | `power_adapter` | object\|null | `{name, wattage, connected, charging}` from SPPowerDataType — relevant for sustained-perf headroom. |
 
 ## Each phase's shape
@@ -134,15 +134,15 @@ Produced by `thermal-load.sh`. Includes ambient temp for cross-machine compariso
 
 The `intel_*` fields are populated only on Intel Macs (where the chassis class is `intel-laptop` or `intel-desktop`); on Apple Silicon they're `null`. Conversely `p_cluster_freq_mhz` / `combined_power_w` are populated on Apple Silicon and `null` on Intel.
 
-`raw_log_path` points at a per-user tempfile under `/var/folders/...`. The agent strips it from the canonical submission JSON.
+`raw_log_path` points at a per-user tempfile under `/var/folders/...`. `./run` strips it from the canonical submission JSON.
 
 ## Privacy / submission-safety
 
 Reports default to submission-safe:
-- **Serial number is hashed** (SHA-256) by `inventory.sh` and `battery.sh`. The plaintext serial is **not** stored unless `INCLUDE_PLAINTEXT_SERIAL=1` is set; when set, the agent flips `submission_safe: false`.
+- **Serial number is hashed** (SHA-256) by `inventory.sh` and `battery.sh`. The plaintext serial is **not** stored unless `INCLUDE_PLAINTEXT_SERIAL=1` is set; when set, `./run` keeps the plaintext in the local copy only and strips it from the submission copy.
 - **`store_location`, `purchase_date`** are `null` by default. Opt in to enable batch-correlation (e.g. "all units bought at HK Apple Causeway Bay in April 2026 with this defect").
-- **`_raw_*` fields** in the inventory and battery sub-blocks contain the full `system_profiler` / `ioreg` dumps and may include paired Bluetooth device IDs, Wi-Fi SSIDs, USB device serials, etc. The agent strips these from the canonical submission JSON and keeps them only in the local `Reports/<ts>-raw/*.json` per-phase artifacts. **`submission_safe: true`** asserts they're stripped.
-- **`submission_safe: true`** is the agent's assertion that no PII has snuck in. If the user adds free-form notes that might contain identifying info, the agent sets this to `false` and warns.
+- **`_raw_*` fields** in the inventory and battery sub-blocks contain the full `system_profiler` / `ioreg` dumps and may include paired Bluetooth device IDs, Wi-Fi SSIDs, USB device serials, etc. `./run` strips these from the submission copy and keeps them only in the local `Reports/local/*.json`. **`submission_safe: true`** asserts they're stripped.
+- **`submission_safe: true`** is the orchestrator's assertion that no PII has snuck in. If the user passes `--notes "…"`, the orchestrator flips this to `false` since notes may contain identifying info.
 
 ### Hash caveat — obfuscation, not anonymization
 

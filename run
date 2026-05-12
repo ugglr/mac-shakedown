@@ -1,0 +1,3 @@
+#!/bin/bash
+# Convenience entry point — execs the orchestrator with all args forwarded.
+exec "$(dirname "$0")/Verification/scripts/run-shakedown.sh" "$@"

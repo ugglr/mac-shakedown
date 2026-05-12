@@ -5,10 +5,15 @@
 .claude/settings.local.json
 .claude/worktrees/
 
-# Run outputs (may contain serials, system info)
+# Run outputs (may contain serials, system info).
+# The orchestrator splits each run into:
+#   Reports/local/        — full output with _raw_* fields (gitignored)
+#   Reports/submissions/  — sanitized for PR submission (committable)
 Reports/*
 !Reports/.gitkeep
 !Reports/SCHEMA.md
+!Reports/submissions/
+Reports/local/
 
 # Local scratch
 .macqa/

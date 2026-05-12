@@ -7,9 +7,9 @@ Thanks for the interest. Shakedown grows in two directions:
 
 ## Adding a target preset
 
-A target preset lets users run `claude "run QA --target <name>"` instead of typing chip / RAM / chassis each time. They live in `targets/*.json`.
+A target preset lets users run `./run --target <name>` to assert the unit matches a specific SKU. They live in `targets/*.json`.
 
-**Schema** (minimal — agent fills in from the Mac's own report for everything else):
+**Schema** (minimal — the unit's own `system_profiler` output fills in everything else):
 
 ```json
 {
@@ -28,7 +28,7 @@ A target preset lets users run `claude "run QA --target <name>"` instead of typi
 | `chip_pattern` | Substring asserted against `system_profiler`'s `chip_type` |
 | `memory_gb` | Asserted against `sysctl hw.memsize` |
 | `model_must_include` | Substring asserted against `machine_model` (catches chassis size) |
-| `calibration_dir` | Path to the `examples/<generation>/` notes the agent should reference |
+| `calibration_dir` | Path to the `examples/<generation>/` notes for failure-analysis cross-reference |
 | `thermal_chassis_class` | One of `fanless`, `active-cooled-pro`, `desktop`, `intel-laptop`, `intel-desktop` — sets thermal thresholds and Phase 4 warmup duration. See [`targets/README.md`](targets/README.md) for the per-class definition. |
 
 Open a PR adding the JSON. Match an existing one for style.
@@ -74,6 +74,16 @@ When the methodology changes:
 - Add an entry to [`CHANGELOG.md`](CHANGELOG.md) under the Unreleased section calling out the comparability impact.
 - If the change affects how reports compare across submissions (e.g. new metric, threshold tightening), call it out explicitly so the future aggregator can bucket old vs. new submissions.
 
-## Reports submission (future)
+## Submitting a calibration report
 
-A planned hosted aggregator will accept opt-in submissions of `Reports/<ts>.json` to build crowd-sourced baselines per generation. Until that lands, the JSON format is the API contract — keep it stable, version it, and don't break old reports.
+Until a hosted aggregator exists, the calibration corpus grows via PRs to `Reports/submissions/`. The orchestrator at `Verification/scripts/run-shakedown.sh` produces a sanitized submission JSON in the predictable filename convention (`{YYYY-MM-DD}-{preset}-{hash4}.json`); add that file in a PR.
+
+What to expect:
+
+1. **CI runs a submission audit** on any PR touching `Reports/submissions/**` — fails the PR if it sees `_raw_*` fields, a plaintext serial, an off-pattern filename, `submission_safe != true`, or missing SCHEMA-required fields.
+2. **Reviewer checks for PII** beyond what CI catches (free-form notes, store location, etc. — the orchestrator never writes these unless you pass `--notes`).
+3. **Merge** — your report lives in-repo, dated and attributable to your PR.
+
+Known-good (PASS) submissions are currently the most valuable: the v0.1 thresholds were derived from public reports rather than measured baselines, and a few clean runs from trusted submitters let us tighten "presumed-good" into "calibrated."
+
+The JSON format is the API contract — keep it stable, version it (`Reports/SCHEMA.md`), and don't break old reports.

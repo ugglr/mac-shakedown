@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Removed
+
+- **`AGENTS.md` and `CLAUDE.md`** — the orchestrator (`./run`) handles all the automated phases end-to-end without an LLM, sudo and the y/N confirmation prompt mean an agent can't actually drive `./run` anyway, and the manual phases (display test, physical inspection, Apple Diagnostics, idle drain) are checklist work that a runbook covers directly. The cross-tool agent convention added churn without enabling anything. All agent framing dropped from README, Runbook, CONTRIBUTING, SECURITY, Reports/SCHEMA, targets/README, examples/m5-2026/README, Shakedown Brain, bug-report template, and cpu-variance.sh comments.
+
+### Added — calibration submission workflow
+
+- **`run-shakedown.sh` orchestrator** — wraps the four auto-runnable phases (inventory, battery, CPU variance, thermal load) end-to-end, prompts sudo upfront, aggregates into a SCHEMA-compliant JSON, and emits a sanitized submission copy alongside the full local copy. One command instead of five-plus, with the predictable `{YYYY-MM-DD}-{preset}-{hash4}.json` filename convention.
+- **`--target` is optional** — running without a preset auto-detects chassis class from `system_profiler` (override with `CHASSIS_CLASS` env var), skips inventory asserts, and softens the battery "factory-fresh" checks (cycle count, ≥99% capacity) since those only make sense on a new-purchase verification. Real-degradation checks still apply. Filename becomes `{YYYY-MM-DD}-{chassis}-{memory}gb-{hash4}.json`.
+- **`./run` convenience entry** — thin shim at the repo root, execs the orchestrator with all args forwarded. Means the public command is `./run` after `cd ~/mac-shakedown`, not the longer `./Verification/scripts/run-shakedown.sh`.
+- **`--no-sudo` (alias `--skip-thermal`)** — skips Phase 5, which is the only phase that needs sudo. Phase 4 (variance) still runs and is the headline test. Half the runtime, no password.
+- **Sudo keep-alive** — background loop refreshes `sudo -n true` every 60 s while the orchestrator runs. macOS default sudo timestamp is 5 min and Phase 4 on Intel takes ~8 min, so the user would otherwise hit a second password prompt mid-run.
+- **Flame banner** — colored ASCII banner on startup, suppressed when stderr isn't a TTY (CI / piped output stays clean).
+- **`Reports/local/` vs `Reports/submissions/` split** — full output with `_raw_*` debug fields stays gitignored; sanitized copy is committable as a PR. Plaintext serials never reach the submission copy, even with `INCLUDE_PLAINTEXT_SERIAL=1`.
+- **CI submission audit** — new step in `.github/workflows/lint.yml` triggered on PRs touching `Reports/submissions/**`. Rejects any `_raw_*` field, `raw_log_path`, plaintext `serial_number`, off-pattern filename, missing SCHEMA fields, or `submission_safe != true`.
+- **README "Submit a calibration report" section** + CONTRIBUTING.md submission flow + PR-template checkbox for calibration submissions. Until a hosted aggregator exists, PRs are how the calibration corpus grows.
+- **Soft inventory assert for `model_must_include`** — Apple Silicon's `machine_model` (e.g. `Mac17,1`) doesn't reliably contain the screen-size substring, so a mismatch now warns rather than fails. Chip and memory remain hard asserts (those are reliable from `system_profiler`).
+
 ### Added — methodology hardening
 
 - **Phase 4 cold burst measurement** — first 5 s of parallel SHA-256 captured before warmup heats the chassis. Burst figure recorded as `burst_throughput_mb_per_s` for diagnostic comparison against the steady-state mean (advisory; doesn't drive verdict without a calibration baseline).

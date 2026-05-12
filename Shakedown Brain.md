@@ -7,15 +7,15 @@ tags: [moc, index]
 
 Obsidian map-of-content for the Shakedown repo. If you opened the folder in Obsidian, this is your entry point. If you're browsing on GitHub, [README.md](README.md) is the better entry point.
 
-Shakedown is a Claude-Code-driven verification harness for new Apple Silicon Macs — a procedure for catching batch-level defects in the return window. (Name borrowed from engineering — a *shakedown run* is the first-run stress test of new machinery before commissioning.)
+Shakedown is a verification harness for new Macs — a procedure for catching batch-level defects in the return window. (Name borrowed from engineering — a *shakedown run* is the first-run stress test of new machinery before commissioning.)
 
 ## Map of Content
 
 ### Verification machinery (generation-agnostic)
 - [[Verification/Runbook]] — phase-by-phase procedure (Pre-flight → Inventory → Battery → Variance → Thermal → Display → Manual → Diagnostics → Drain → Report)
 - [[Verification/Pass-Fail Criteria]] — concrete thresholds, parameterized by chassis class
-- [[AGENTS]] — agent operating manual (cross-tool convention; Claude Code reads it via the [[CLAUDE]] pointer)
 - Scripts in `Verification/scripts/`:
+	- `run-shakedown.sh` — orchestrator (`./run` at repo root execs this)
 	- `inventory.sh` — `system_profiler` + `sysctl` → JSON
 	- `battery.sh` — `ioreg` battery health → JSON
 	- `cpu-variance.sh` — burst + chassis-class-aware warmup + 5×60s timed iters, throughput stats → JSON
@@ -50,4 +50,4 @@ Shakedown is a Claude-Code-driven verification harness for new Apple Silicon Mac
 
 The defect class that motivated Shakedown: **batch-level performance variance** that doesn't show up in a quick boot test. The 2026 M5 Max line had units showing up to 41.5% multi-core variance between identical runs — invisible until you ran repeated sustained-load benchmarks on a thermally-saturated chassis. This is what `cpu-variance.sh` is designed to catch.
 
-Cosmetic / build issues (hinge creak, dead pixels, speaker crackle) are obvious on first inspection — the agent prompts you for those manually. The unique value of the harness is in the load-and-thermal phases.
+Cosmetic / build issues (hinge creak, dead pixels, speaker crackle) are obvious on first inspection — those are phases 6–9, walked through manually following the runbook. The unique value of the harness is in the automated load-and-thermal phases.
