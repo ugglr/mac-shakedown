@@ -1,0 +1,9 @@
+{
+  "name": "Mac mini, M4",
+  "chip_pattern": "Apple M4",
+  "memory_gb": null,
+  "model_must_include": "Mac mini",
+  "calibration_dir": "examples/m4-2024",
+  "thermal_chassis_class": "desktop",
+  "_note": "Generation-representative preset for the M4 Mac mini. memory_gb is null; pin it for a hard assert. chip_pattern 'Apple M4' is a substring and also matches M4 Pro minis. The M4 generation is clean; its most serious issue (a JIT kernel panic on macOS 15.0-15.1) is OS-gated and not harness-detectable, fixed in 15.2. See examples/m4-2024/."
+}
