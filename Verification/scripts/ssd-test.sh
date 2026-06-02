@@ -137,9 +137,43 @@ print(f"  read {bytes_read // (1024*1024)}MB in {read_seconds:.2f}s "
       file=sys.stderr)
 
 # --- Verdict & data quality ---
-# v0.2: SSD numbers are informational. They contribute to calibration but don't
-# pass/fail on their own until v0.3 sets chassis-family thresholds.
+# v0.2: SSD numbers are informational. Chassis-family pass/fail bands still land
+# in v0.3 once the submission corpus has baselines.
 data_quality = "ok" if purge_ok else "few_samples"
+
+# Conservative sanity floor (NOT a calibrated threshold). Every NVMe-equipped
+# Mac since ~2016 clears well over 1000 MB/s sequential, so a number this low
+# points at a real problem worth catching before the return window closes: the
+# documented 256 GB single-NAND-die regression (M2 Air and base 13" MBP, where
+# the single die roughly halved sequential speed vs the two-die 512 GB), a
+# failing drive, or pre-NVMe SATA/Fusion storage (out of scope). Only meaningful
+# when the page cache was actually dropped, otherwise the read is RAM speed.
+# Warn only, never fail: this is a floor, not a calibrated band.
+FLOOR_MB_PER_S = 500
+verdict = "info"
+floor_reason = None
+if purge_ok and (write_mb_per_s < FLOOR_MB_PER_S or read_mb_per_s < FLOOR_MB_PER_S):
+    verdict = "warn"
+    slow = []
+    if write_mb_per_s < FLOOR_MB_PER_S:
+        slow.append(f"write {write_mb_per_s:.0f} MB/s")
+    if read_mb_per_s < FLOOR_MB_PER_S:
+        slow.append(f"read {read_mb_per_s:.0f} MB/s")
+    floor_reason = (
+        f"{' and '.join(slow)} below {FLOOR_MB_PER_S} MB/s, far under any "
+        f"NVMe-equipped Mac (>1000 MB/s typical). Could be the 256 GB single-die "
+        f"SSD regression, a failing drive, or older SATA storage. Investigate."
+    )
+
+verdict_reasons = [
+    f"write {write_mb_per_s:.0f} MB/s, read {read_mb_per_s:.0f} MB/s"
+    + ("" if purge_ok else " (cache not dropped, so read is RAM speed)"),
+]
+if floor_reason:
+    verdict_reasons.append(floor_reason)
+verdict_reasons.append(
+    "informational in v0.2; calibrated pass/fail thresholds land in v0.3"
+)
 
 result = {
     "workload": f"sequential write+read of {size_gb}GB incompressible random data",
@@ -150,14 +184,11 @@ result = {
     "page_cache_dropped": purge_ok,
     "read_seconds": round(read_seconds, 3),
     "read_mb_per_s": round(read_mb_per_s, 2),
+    "ssd_floor_mb_per_s": FLOOR_MB_PER_S,
     "data_quality": data_quality,
     "data_quality_notes": data_quality_notes,
-    "verdict": "info",
-    "verdict_reasons": [
-        f"write {write_mb_per_s:.0f} MB/s, read {read_mb_per_s:.0f} MB/s"
-        + ("" if purge_ok else " (cache not dropped, so read is RAM speed)"),
-        "informational in v0.2; calibrated pass/fail thresholds land in v0.3"
-    ],
+    "verdict": verdict,
+    "verdict_reasons": verdict_reasons,
 }
 print(json.dumps(result, indent=2))
 PYEOF

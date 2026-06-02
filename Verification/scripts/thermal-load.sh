@@ -35,10 +35,10 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 case "$CHASSIS_CLASS" in
-  fanless|active-cooled-pro|desktop|intel-laptop|intel-desktop) ;;
+  fanless|active-cooled-pro|active-cooled-pro-14|active-cooled-pro-16|desktop|intel-laptop|intel-desktop) ;;
   *)
     echo "thermal-load.sh: unknown CHASSIS_CLASS='$CHASSIS_CLASS'" >&2
-    echo "  use one of: fanless | active-cooled-pro | desktop | intel-laptop | intel-desktop" >&2
+    echo "  use one of: fanless | active-cooled-pro | active-cooled-pro-14 | active-cooled-pro-16 | desktop | intel-laptop | intel-desktop" >&2
     exit 2
     ;;
 esac
@@ -340,6 +340,23 @@ THRESHOLDS = {
         "early_cliff_warn": 25, "early_cliff_fail": 40,
         "expect_fan_ramp": True,
     },
+}
+
+# 14" vs 16" MacBook Pro split (roadmap). The 14" M5 Max throttles by design
+# under sustained Pro-class load (smaller fan and thermal mass), so it gets
+# looser steady-state and cliff bands; an otherwise-healthy 14" lands in the
+# 16" warn band. "active-cooled-pro-16" aliases the strict table above, and the
+# legacy "active-cooled-pro" keeps that same strict table so existing presets
+# and submissions stay comparable. Auto-detect cannot tell 14" from 16"
+# (system_profiler does not expose screen size on Apple Silicon), so the precise
+# sub-class only arrives via a --target preset.
+THRESHOLDS["active-cooled-pro-16"] = THRESHOLDS["active-cooled-pro"]
+THRESHOLDS["active-cooled-pro-14"] = {
+    "cpu_temp_warn": 100, "cpu_temp_fail": 105,
+    "steady_warn":   60,  "steady_fail":   50,
+    "cliff_warn":    30,  "cliff_fail":    40,
+    "early_cliff_warn": 35, "early_cliff_fail": 50,
+    "expect_fan_ramp": True,
 }
 T = THRESHOLDS[chassis]
 

@@ -3,14 +3,19 @@
 # pre-warmed (saturated) chassis. Detects batch-level performance variance
 # (~41.5% multi-core variance reported on M5 Max bad batches in early 2026).
 #
-# CAVEAT — what this test actually measures:
+# CAVEAT: what the default sha256 workload measures.
 # SHA-256 is hardware-accelerated on Apple Silicon. The test stresses the SHA
-# engines, multiprocessing scheduling, and chassis thermal mass — but does NOT
+# engines, multiprocessing scheduling, and chassis thermal mass, but does NOT
 # probe integer pipelines, memory bandwidth, or large-cache thermal behavior as
 # deeply as Cinebench / Geekbench would. Public reports of the M5 Max defect
 # came from those benchmarks; this test catches *correlated* signals (timing
 # variance + thermal saturation behavior) but isn't 1:1 with their workloads.
-# A non-accelerated workload pass is on the roadmap.
+#
+# Phase 4b (WORKLOAD=blake2b) closes that gap: BLAKE2b has no dedicated CPU
+# instruction, so it runs on the integer pipelines and catches batch defects
+# that SHA-NI / the Apple crypto engine would hide. Same variance methodology,
+# different workload. It is opt-in (./run --noaccel) because it adds a second
+# sustained pass.
 #
 # Test design:
 #   1) BURST_SEC of cold-start measurement      (peak boost throughput)
@@ -31,20 +36,26 @@
 #   SECONDS_PER_ITER  default 60
 #   WORKERS           default = P-cores
 #   CHASSIS_CLASS     default active-cooled-pro
+#                       active-cooled-pro / -14 / -16 share this warmup; they
+#                       differ only in thermal-load.sh thresholds.
+#   WORKLOAD          default sha256 (hardware-accelerated). Set to blake2b for
+#                       the non-accelerated Phase 4b pass: no CPU crypto
+#                       instruction, so it stresses the integer pipelines and
+#                       memory the way Cinebench / Geekbench do.
 
 set -euo pipefail
 
 CHASSIS_CLASS=${CHASSIS_CLASS:-active-cooled-pro}
 
 case "$CHASSIS_CLASS" in
-  fanless)            DEFAULT_WARMUP=60 ;;
-  active-cooled-pro)  DEFAULT_WARMUP=300 ;;
-  desktop)            DEFAULT_WARMUP=180 ;;
-  intel-laptop)       DEFAULT_WARMUP=180 ;;  # Intel laptops saturate fast
-  intel-desktop)      DEFAULT_WARMUP=180 ;;
+  fanless)                                                    DEFAULT_WARMUP=60 ;;
+  active-cooled-pro|active-cooled-pro-14|active-cooled-pro-16) DEFAULT_WARMUP=300 ;;
+  desktop)                                                    DEFAULT_WARMUP=180 ;;
+  intel-laptop)                                               DEFAULT_WARMUP=180 ;;  # Intel laptops saturate fast
+  intel-desktop)                                              DEFAULT_WARMUP=180 ;;
   *)
     echo "cpu-variance.sh: unknown CHASSIS_CLASS='$CHASSIS_CLASS'" >&2
-    echo "  use one of: fanless | active-cooled-pro | desktop | intel-laptop | intel-desktop" >&2
+    echo "  use one of: fanless | active-cooled-pro | active-cooled-pro-14 | active-cooled-pro-16 | desktop | intel-laptop | intel-desktop" >&2
     exit 2
     ;;
 esac
@@ -53,6 +64,15 @@ BURST_SEC=${BURST_SEC:-5}
 WARMUP_SEC=${WARMUP_SEC:-$DEFAULT_WARMUP}
 ITERATIONS=${ITERATIONS:-5}
 SECONDS_PER_ITER=${SECONDS_PER_ITER:-60}
+
+WORKLOAD=${WORKLOAD:-sha256}
+case "$WORKLOAD" in
+  sha256|blake2b) ;;
+  *)
+    echo "cpu-variance.sh: unknown WORKLOAD='$WORKLOAD' (use sha256 or blake2b)" >&2
+    exit 2
+    ;;
+esac
 
 # WORKERS: probe P-cores then fall back; treat empty string as unset.
 if [[ -z "${WORKERS:-}" ]]; then
@@ -67,9 +87,9 @@ if ! [[ "$WORKERS" =~ ^[0-9]+$ ]] || (( WORKERS < 1 )); then
 fi
 
 TOTAL=$((BURST_SEC + WARMUP_SEC + ITERATIONS * SECONDS_PER_ITER))
-echo "cpu-variance: chassis=$CHASSIS_CLASS, burst=${BURST_SEC}s, warmup=${WARMUP_SEC}s, then $ITERATIONS × ${SECONDS_PER_ITER}s timed iters; $WORKERS workers (~${TOTAL}s = $((TOTAL / 60))m total)" >&2
+echo "cpu-variance: workload=$WORKLOAD, chassis=$CHASSIS_CLASS, burst=${BURST_SEC}s, warmup=${WARMUP_SEC}s, then $ITERATIONS × ${SECONDS_PER_ITER}s timed iters; $WORKERS workers (~${TOTAL}s = $((TOTAL / 60))m total)" >&2
 
-python3 - "$BURST_SEC" "$WARMUP_SEC" "$ITERATIONS" "$SECONDS_PER_ITER" "$WORKERS" "$CHASSIS_CLASS" <<'PYEOF'
+python3 - "$BURST_SEC" "$WARMUP_SEC" "$ITERATIONS" "$SECONDS_PER_ITER" "$WORKERS" "$CHASSIS_CLASS" "$WORKLOAD" <<'PYEOF'
 import hashlib
 import json
 import multiprocessing
@@ -86,11 +106,17 @@ ITERATIONS       = int(sys.argv[3])
 SECONDS_PER_ITER = int(sys.argv[4])
 WORKERS          = int(sys.argv[5])
 CHASSIS_CLASS    = sys.argv[6]
+WORKLOAD         = sys.argv[7]
 
-DATA = bytes(1024 * 1024)  # 1 MB of zeros — SHA-256 has no data-dependent fast paths
+# sha256 is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel.
+# blake2b (Phase 4b) has no dedicated CPU instruction, so it runs on the integer
+# pipelines and exercises the paths SHA-NI / the Apple crypto engine hide.
+HASH = hashlib.blake2b if WORKLOAD == "blake2b" else hashlib.sha256
+
+DATA = bytes(1024 * 1024)  # 1 MB of zeros; neither hash has a data-dependent fast path
 
 def worker(stop_at):
-    h = hashlib.sha256()
+    h = HASH()
     ops = 0
     while time.time() < stop_at:
         for _ in range(64):
@@ -290,7 +316,11 @@ result = {
     "max_worker_imbalance_pct": max_worker_imbalance_pct,
     "verdict": verdict,
     "verdict_reasons": reasons,
-    "workload": "sha256-parallel (hardware-accelerated on Apple Silicon — see script header CAVEAT)",
+    "workload": (
+        "blake2b-parallel (not hardware-accelerated; stresses integer pipelines, Phase 4b)"
+        if WORKLOAD == "blake2b" else
+        "sha256-parallel (hardware-accelerated on Apple Silicon; see script header CAVEAT)"
+    ),
 }
 print(json.dumps(result, indent=2))
 PYEOF
