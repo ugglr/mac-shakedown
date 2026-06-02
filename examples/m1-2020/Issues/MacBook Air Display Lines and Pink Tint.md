@@ -11,7 +11,7 @@ Cable/T-CON-style display issues on the M1 Air and 13" Pro: lines, discoloration
 
 ## Symptoms
 
-- Horizontal or vertical lines or discoloration bands, sometimes originating from a hairline crack at the bottom of the LCD.
+- Horizontal or vertical lines or discoloration bands across the panel.
 - Intermittent pink or purple tint, or pink flickering, on part of the screen that changes when the lid is flexed or bent.
 - An occasional full pink-screen crash. That last one is a kernel panic (software), not the panel.
 

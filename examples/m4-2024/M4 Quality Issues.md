@@ -23,7 +23,7 @@ This was a clean generation. There is no headline batch defect on the order of t
 - M4 JIT / SPTM kernel panic under JIT-compiled workloads (Ruby YJIT, PHP opcache, Puma) on macOS 15.0-15.1, Apple-acknowledged and fixed in 15.2 (Ruby tracker, Puma, Hacker News, plus JetBrains and OpenZFS corroboration).
 - Mac mini M4 Wi-Fi throughput drop when the unit sits on or near a metal dock or external drive (AppleInsider, mjtsai, Apple Discussions, MacRumors, Hacker News).
 
-**Anecdotal but credible (single-source / community-sourced):**
+**Community-sourced but credible (multiple first-hand reports, not officially confirmed):**
 - Thunderbolt 5 ports failing to power bus-powered single-cable portable monitors that work fine on TB4. The symptom is corroborated across several first-hand reports (Apple Discussions, MacRumors), but it is community-sourced and not confirmed by Apple, press, or lab testing.
 
 **Not a defect, but design behavior / context to expect:**
