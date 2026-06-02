@@ -36,7 +36,7 @@ Recommended approach (script must do this):
 1. Run Geekbench 6 multi-core **at least 5 consecutive times** with ~30s gaps.
 2. Compute: max, min, mean, standard deviation, **(max-min)/mean × 100**.
 3. Flag the unit if the spread exceeds ~10%. Healthy units are well under this.
-4. Cross-reference each run's score against the published M5 Max baseline (~25k–28k Geekbench 6 multi-core, depending on chip variant). A unit consistently 20%+ below baseline is suspect even if variance is low.
+4. Cross-reference each run's score against the published M5 Max baseline (~29,000–29,400 Geekbench 6 multi-core, ~4,200–4,335 single-core; see [Benchmark Reference](../../../Verification/Benchmark%20Reference.md) and verify live since numbers drift). A unit consistently 20%+ below baseline is suspect even if variance is low.
 5. Repeat with a sustained workload (Cinebench R24 multi-core 10-min run) and watch for score drop between iterations.
 
 Companion checks during the runs:

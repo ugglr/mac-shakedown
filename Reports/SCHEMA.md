@@ -9,7 +9,7 @@ Every QA run produces two artifacts in `Reports/`:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `schema_version` | string | yes | Semver of the schema. Currently `"1.2"`. |
+| `schema_version` | string | yes | Semver of the schema. Currently `"1.3"`. |
 | `shakedown_version` | string | yes | Tool version that produced the report (e.g. `"0.1.0"`). |
 | `timestamp` | string | yes | ISO 8601 UTC. |
 | `illustrative` | bool | no | `true` for hand-crafted samples (under `examples/sample-report-*`). Aggregator must filter these out. |
@@ -205,39 +205,47 @@ As of schema 1.2 the phase carries a conservative warn-only floor (`ssd_floor_mb
 
 ## Phase 12 (`12_memory_bandwidth`): full detail
 
-Produced by `memory-bandwidth.sh`. Multi-threaded sequential `ctypes.memmove` copy, one worker per P-core, over buffers sized to exceed the system-level cache so it measures DRAM bandwidth, not cache. Comparable across submissions grouped by `unit.chip` + `unit.memory_gb`.
+Produced by `memory-bandwidth.sh`. Measures DRAM bandwidth with one worker thread per P-core over buffers sized past the system-level cache. A single thread can't saturate the multi-channel controllers on Apple Silicon, so it is multi-threaded the way STREAM uses OpenMP. Comparable across submissions grouped by `unit.chip` + `unit.memory_gb`.
+
+Two methods, recorded in `details.method`:
+- **`stream-triad`** (preferred): the vendored `stream-triad.c` (real STREAM Copy / Scale / Add / Triad), compiled at runtime with the `clang` from the Command Line Tools. No network, no shipped binary; the C source is in the repo, compiled to a tempfile and deleted.
+- **`memmove-proxy`** (fallback): a pure-Python `ctypes.memmove` copy loop, used when `clang` is unavailable. A lower bound on the triad (copy only), but it still catches a slow or inconsistent memory subsystem.
 
 ```json
 {
   "verdict": "info",
-  "duration_s": 10,
+  "duration_s": 6,
   "details": {
-    "workload": "multi-threaded sequential memcpy (ctypes.memmove), DRAM-bound",
+    "workload": "STREAM-style triad (vendored C, pthreads), DRAM-bound",
+    "method": "stream-triad",
     "workers": 12,
-    "per_buffer_mb": 64,
-    "total_working_set_mb": 1536,
-    "iterations": 5,
-    "seconds_per_iter": 2,
-    "copy_bandwidth_gb_per_s": [98.2, 97.8, 98.5, 98.1, 97.9],
-    "mean_copy_gb_per_s": 98.1,
-    "min_copy_gb_per_s": 97.8,
-    "max_copy_gb_per_s": 98.5,
-    "spread_pct": 0.71,
-    "touched_bandwidth_gb_per_s_mean": 196.2,
-    "wall_seconds": 10.4,
+    "working_set_mb": 1023,
+    "reps": 5,
+    "copy_gb_per_s": [412.1, 410.0, 408.6, 409.9, 410.3],
+    "scale_gb_per_s": [389.0, 387.2, 388.4, 388.1, 387.8],
+    "add_gb_per_s": [403.1, 402.0, 401.8, 402.9, 402.7],
+    "triad_gb_per_s": [404.5, 403.1, 401.1, 406.3, 404.0],
+    "mean_copy_gb_per_s": 410.18,
+    "mean_scale_gb_per_s": 388.1,
+    "mean_add_gb_per_s": 402.5,
+    "mean_triad_gb_per_s": 403.8,
+    "min_triad_gb_per_s": 401.1,
+    "max_triad_gb_per_s": 406.3,
+    "spread_pct": 1.29,
+    "wall_seconds": 6,
     "data_quality": "ok",
     "data_quality_notes": []
   },
   "verdict_reasons": [
-    "mean copy 98.1 GB/s (read+write ~196.2 GB/s touched) across 12 workers, spread 0.7%",
+    "triad mean 403.8 GB/s (copy 410.2, scale 388.1, add 402.5) across 12 threads, spread 1.3%",
     "informational in v0.2; calibrated pass/fail thresholds land in v0.3"
   ]
 }
 ```
 
-`copy_bandwidth_gb_per_s` counts bytes copied (N per `memmove`). Each copy also reads N and writes N, so `touched_bandwidth_gb_per_s_mean` (2x the copy mean) is the read+write traffic the controller actually moved. This is a lower bound on a full STREAM triad: scale / add / triad need elementwise arithmetic that pure Python can't do at memory speed without a native kernel. `memmove` is the honest stdlib proxy, and it still catches a memory subsystem that is slow or inconsistent across runs. A single thread cannot saturate the multi-channel controllers on Apple Silicon, so the test is multi-threaded the way STREAM is built with OpenMP.
+The `memmove-proxy` fallback emits the older copy-only shape instead (`copy_bandwidth_gb_per_s`, `mean_copy_gb_per_s`, `touched_bandwidth_gb_per_s_mean`, `per_buffer_mb`, `iterations`, `seconds_per_iter`) with `method: "memmove-proxy"` and a `data_quality_notes` entry explaining the triad was unavailable. Both methods emit `mean_copy_gb_per_s` so reports stay comparable.
 
-`verdict: "skipped"` when there is not enough RAM to size cache-busting buffers for the worker count (the working set is capped at 40% of physical memory).
+`verdict: "skipped"` when there is not enough RAM to size cache-busting buffers (the working set is capped at 40% of physical memory).
 
 ## Phase 4b (`4b_cpu_variance_noaccel`): full detail
 
@@ -285,9 +293,43 @@ This is the one phase that is not pure bash + Python stdlib: a real GPU load nee
 
 `verdict: "skipped"` when `--gpu` is not passed, or when the GPU / toolchain is unavailable.
 
+## Phase 14 (`14_llama_bench`): full detail
+
+Produced by `llama-bench.sh`. Opt-in (`./run --llama`). The only phase that reaches the network and runs third-party code: it clones and builds llama.cpp (pinned ref, cached) with `cmake`, then runs `llama-bench` on a small GGUF model and records prompt and generation tokens-per-second plus run-to-run spread. An LLM inference load is the one test that stresses the CPU, the GPU (Metal), and the memory subsystem together under sustained load, which is the workload class the M5 Max defect was reported on.
+
+```json
+{
+  "verdict": "info",
+  "duration_s": 90,
+  "details": {
+    "workload": "llama.cpp llama-bench (combined CPU + GPU + memory, AI inference)",
+    "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    "llama_ref": "b4585",
+    "backend": "Metal",
+    "prompt_tok_per_s": 4200.5,
+    "prompt_tok_per_s_stddev": 18.3,
+    "prompt_spread_pct": 0.44,
+    "gen_tok_per_s": 180.7,
+    "gen_tok_per_s_stddev": 1.2,
+    "gen_spread_pct": 0.66,
+    "wall_seconds": 90,
+    "data_quality": "ok",
+    "data_quality_notes": []
+  },
+  "verdict_reasons": [
+    "Metal: prompt 4,200.5 tok/s, gen 180.7 tok/s (gen spread 0.7%)",
+    "informational in v0.2; GPU/AI thresholds land once the corpus has baselines"
+  ]
+}
+```
+
+This phase is neither pure stdlib nor offline: opting in clones a third-party repo, builds it, may download a model, and runs it. The model comes from `LLAMA_MODEL` (a local path) or a pinned `LLAMA_MODEL_URL` download. It degrades to `verdict: "skipped"` (never failing the run) when `git`, `cmake`, the network, or a model is unavailable. See [SECURITY.md](../SECURITY.md) for the disclosure.
+
+`verdict: "skipped"` when `--llama` is not passed, or when any of git / cmake / network / model is unavailable.
+
 ## Note on phase key ordering
 
-The phase keys (`0_preflight`, `1_inventory`, ... `4b_cpu_variance_noaccel`, `10_race_bench`, `12_memory_bandwidth`, `13_gpu_variance`) sort alphabetically rather than numerically (`10` comes before `2` lexicographically, and `4b` sorts after `4`). JSON output preserves the orchestrator's insertion order so human-readable reports render in run order: preflight, inventory, battery, sensors, race, ssd, memory_bandwidth, cpu_variance, cpu_variance_noaccel, thermal_load, gpu_variance, then the skipped manual phases. Parsers iterating phase names should not assume numeric sort order.
+The phase keys (`0_preflight`, `1_inventory`, ... `4b_cpu_variance_noaccel`, `10_race_bench`, `12_memory_bandwidth`, `13_gpu_variance`, `14_llama_bench`) sort alphabetically rather than numerically (`10` comes before `2` lexicographically, and `4b` sorts after `4`). JSON output preserves the orchestrator's insertion order so human-readable reports render in run order: preflight, inventory, battery, sensors, race, ssd, memory_bandwidth, cpu_variance, cpu_variance_noaccel, thermal_load, gpu_variance, llama_bench, then the skipped manual phases. Parsers iterating phase names should not assume numeric sort order.
 
 ## Privacy / submission-safety
 
@@ -318,3 +360,4 @@ If a test methodology changes (e.g. variance test gains a new metric, or thresho
 - **1.0** → initial release schema (phases 0-9).
 - **1.1** → added phases 10_race_bench and 11_ssd_test (informational; pass/fail thresholds pending v0.3 calibration corpus). Backward compatible: reports without these phases still validate as 1.0 shape.
 - **1.2** → added phases 12_memory_bandwidth (informational), 4b_cpu_variance_noaccel (opt-in non-accelerated variance, real pass/warn/fail when run), and 13_gpu_variance (opt-in Metal compute, informational). Added a conservative warn-only floor to 11_ssd_test (`ssd_floor_mb_per_s`) and split the `active-cooled-pro` thermal class into `active-cooled-pro-14` / `active-cooled-pro-16` (the bare class stays valid as the 16"-equivalent, so older reports and presets still compare). Backward compatible: 4b and 13 are `skipped` placeholders unless opted in.
+- **1.3** → Phase 12 now prefers a vendored STREAM triad (`details.method` is `stream-triad` or the `memmove-proxy` fallback; new `*_triad_gb_per_s` / `mean_scale_gb_per_s` / `mean_add_gb_per_s` fields). Added phase 14_llama_bench (opt-in `--llama`: clones/builds llama.cpp and runs llama-bench, a combined CPU+GPU+memory load; informational, `skipped` unless opted in). Backward compatible: both phase-12 methods keep `mean_copy_gb_per_s`, and 14 is a `skipped` placeholder by default.

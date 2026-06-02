@@ -52,7 +52,7 @@ The verification scripts and runbook **don't need to change**. They're calibrati
 
 ## Improving a script
 
-The scripts in `Verification/scripts/` are deliberately self-contained: bash plus Python heredocs, no external dependencies beyond what ships with macOS. Keep it that way. If you need to add a third-party benchmark (Geekbench, sysbench), or something that genuinely needs more than the stdlib (the opt-in `--gpu` phase compiles a Metal kernel with `swiftc` at runtime), make it optional and have it skip cleanly when the dependency is absent, so the default `./run` stays pure bash plus Python stdlib.
+The scripts in `Verification/scripts/` are deliberately self-contained: bash plus Python heredocs, no external dependencies beyond what ships with macOS. Keep it that way. Two patterns in the tree show how to go further without breaking that: a vendored single-file source compiled at runtime with a pure fallback (the Phase 12 STREAM triad, `stream-triad.c`, falls back to a `memmove` proxy, and never touches the network), and a strictly opt-in phase that may use the network or third-party code (the `--gpu` Metal compile and the `--llama` llama.cpp clone/build), off by default, skipping cleanly when unavailable, and disclosed in [SECURITY.md](SECURITY.md). The default `./run` stays pure bash plus Python stdlib and offline; anything beyond that is opt-in and disclosed.
 
 ### Validating changes to a script
 

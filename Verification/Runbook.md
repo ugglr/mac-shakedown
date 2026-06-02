@@ -5,7 +5,7 @@ tags: [verification, runbook]
 
 # QA Runbook
 
-The procedure for each verification phase. The automated phases (0–5, the cold benchmarks 10–12, and the opt-in 4b / 13) are run by [`./run`](../README.md#quick-start); phases 6–9 are manual checks you step through yourself. Each phase has a goal, an action, and a pass condition. See [Pass-Fail Criteria](Pass-Fail%20Criteria.md) for the consolidated thresholds and [the JSON report schema](../Reports/SCHEMA.md) for the canonical output format.
+The procedure for each verification phase. The automated phases (0–5, the cold benchmarks 10–12, and the opt-in 4b / 13 / 14) are run by [`./run`](../README.md#quick-start); phases 6–9 are manual checks you step through yourself. Each phase has a goal, an action, and a pass condition. See [Pass-Fail Criteria](Pass-Fail%20Criteria.md) for the consolidated thresholds, [Benchmark Reference](Benchmark%20Reference.md) for published score baselines and the in-store / hotel protocol, and [the JSON report schema](../Reports/SCHEMA.md) for the canonical output format.
 
 **Total time:** ~45 min on a MacBook Pro, ~25 min on a fanless Air, ~35 min on a desktop or Intel Mac, +30 min if you opt into the idle-drain test.
 

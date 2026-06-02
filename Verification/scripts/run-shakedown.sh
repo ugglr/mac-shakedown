@@ -23,6 +23,8 @@ NOTES=""
 NO_SUDO=0
 RUN_NOACCEL=0
 RUN_GPU=0
+STORE=0
+RUN_LLAMA=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,9 +48,17 @@ while [[ $# -gt 0 ]]; do
       RUN_GPU=1
       shift
       ;;
+    --store)
+      STORE=1
+      shift
+      ;;
+    --llama)
+      RUN_LLAMA=1
+      shift
+      ;;
     -h|--help)
       cat <<HELP
-Usage: $(basename "$0") [--target <preset>] [--no-sudo] [--noaccel] [--gpu] [--notes "free-form notes"]
+Usage: $(basename "$0") [--target <preset>] [--store] [--no-sudo] [--noaccel] [--gpu] [--llama] [--notes "free-form notes"]
 
   --target <preset>   optional. Target preset name (file under targets/ without .json)
                       e.g. mbp-16-m5-max-64, macbook-air-m5-16, mbp-16-intel-2019.
@@ -63,6 +73,16 @@ Usage: $(basename "$0") [--target <preset>] [--no-sudo] [--noaccel] [--gpu] [--n
   --gpu               also run Phase 13: a Metal GPU compute variance pass. Compiles
                       a small Metal kernel with swiftc at runtime; skips cleanly if
                       swiftc or a Metal device is unavailable.
+  --llama             also run Phase 14: an opt-in combined CPU+GPU+memory load.
+                      Clones and builds llama.cpp (needs git + cmake + network)
+                      and runs llama-bench. Reaches the network and runs
+                      third-party code (see SECURITY.md). Skips cleanly if any of
+                      git / cmake / network / model is unavailable.
+  --store             thorough "paranoid" profile for verifying a new unit (M5
+                      especially). Turns on --noaccel and --gpu and runs a longer
+                      warmup with more iterations, so an intermittent batch defect
+                      has more chances to surface. ~40-50 min on AC. Honors any
+                      WARMUP_SEC / ITERATIONS / SECONDS_PER_ITER you set yourself.
   --notes "..."       optional free-form note to embed in the report. Setting any
                       note flips submission_safe to false (notes may contain PII).
 
@@ -77,6 +97,22 @@ HELP
       ;;
   esac
 done
+
+# --store: thorough profile for verifying a new unit (especially M5). Run both CPU
+# workloads (SHA-256 plus the non-accelerated BLAKE2b that matches where the M5
+# defect was reported) and the GPU pass, with a longer warmup and more iterations
+# so an intermittent batch defect has more chances to surface. The := assignments
+# honor any timing env vars the user set explicitly. Exported so the cpu-variance
+# child phases inherit them.
+if [[ "$STORE" -eq 1 ]]; then
+  RUN_NOACCEL=1
+  RUN_GPU=1
+  : "${WARMUP_SEC:=420}"
+  : "${ITERATIONS:=8}"
+  : "${SECONDS_PER_ITER:=60}"
+  : "${NOACCEL_WARMUP_SEC:=180}"
+  export WARMUP_SEC ITERATIONS SECONDS_PER_ITER NOACCEL_WARMUP_SEC
+fi
 
 TARGET_FILE=""
 if [[ -n "$TARGET" ]]; then
@@ -230,10 +266,15 @@ else
 fi
 
 if [[ -z "${SHAKEDOWN_YES:-}" ]]; then
-  duration_hint="race + SSD + memory benchmarks (~2 min), then Phase 4 variance (~8 min)"
-  if [[ "$NO_SUDO" -ne 1 ]]; then duration_hint="$duration_hint, Phase 5 thermal (~10 min)"; fi
-  if [[ "$RUN_NOACCEL" -eq 1 ]]; then duration_hint="$duration_hint, Phase 4b non-accelerated variance (~6 min)"; fi
-  if [[ "$RUN_GPU" -eq 1 ]]; then duration_hint="$duration_hint, Phase 13 GPU compute (~1 min)"; fi
+  if [[ "$STORE" -eq 1 ]]; then
+    duration_hint="STORE profile (thorough): both CPU workloads plus GPU, longer warmup and $ITERATIONS iterations, roughly 40-50 min total on AC"
+  else
+    duration_hint="race + SSD + memory benchmarks (~2 min), then Phase 4 variance (~8 min)"
+    if [[ "$NO_SUDO" -ne 1 ]]; then duration_hint="$duration_hint, Phase 5 thermal (~10 min)"; fi
+    if [[ "$RUN_NOACCEL" -eq 1 ]]; then duration_hint="$duration_hint, Phase 4b non-accelerated variance (~6 min)"; fi
+    if [[ "$RUN_GPU" -eq 1 ]]; then duration_hint="$duration_hint, Phase 13 GPU compute (~1 min)"; fi
+  fi
+  if [[ "$RUN_LLAMA" -eq 1 ]]; then duration_hint="$duration_hint; plus Phase 14 llama.cpp (opt-in: clones + builds, can add 5-15 min on first run)"; fi
   cat <<INFO >&2
 
 About to run $duration_hint. Fans will spin up loud and the chassis will get
@@ -279,6 +320,7 @@ VARIANCE_JSON="$WORK/variance.json"
 NOACCEL_JSON="$WORK/noaccel.json"
 THERMAL_JSON="$WORK/thermal.json"
 GPU_JSON="$WORK/gpu.json"
+LLAMA_JSON="$WORK/llama.json"
 
 ignite "Phase 0: preflight"
 {
@@ -358,6 +400,18 @@ else
 EOF
 fi
 
+if [[ "$RUN_LLAMA" -eq 1 ]]; then
+  ignite "Phase 14: llama.cpp combined load (opt-in, clones + builds)"
+  start_heartbeat
+  "$SCRIPT_DIR/llama-bench.sh" > "$LLAMA_JSON"
+  stop_heartbeat
+else
+  ignite "Phase 14: skipped (opt-in; pass --llama)"
+  cat > "$LLAMA_JSON" <<EOF
+{"verdict":"skipped","verdict_reasons":["opt-in phase; pass --llama to clone, build, and run llama.cpp llama-bench (network + third-party code, see SECURITY.md)"],"workload":"llama.cpp llama-bench","data_quality":"skipped"}
+EOF
+fi
+
 echo "shakedown: aggregating into canonical report"
 
 mkdir -p "$REPO_ROOT/Reports/local" "$REPO_ROOT/Reports/submissions"
@@ -374,6 +428,7 @@ python3 - \
   "$NOACCEL_JSON" \
   "$THERMAL_JSON" \
   "$GPU_JSON" \
+  "$LLAMA_JSON" \
   "$REPO_ROOT/Reports/local" \
   "$REPO_ROOT/Reports/submissions" \
   "$TARGET" \
@@ -387,11 +442,11 @@ import re
 import sys
 
 (target_file, preflight_txt, inv_path, bat_path, race_path, ssd_path,
- membw_path, var_path, noaccel_path, thr_path, gpu_path,
- local_dir, submissions_dir, target_name, notes) = sys.argv[1:16]
+ membw_path, var_path, noaccel_path, thr_path, gpu_path, llama_path,
+ local_dir, submissions_dir, target_name, notes) = sys.argv[1:17]
 
 SHAKEDOWN_VERSION = "0.1.0"
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 def load(path):
     with open(path) as f:
@@ -407,6 +462,7 @@ variance = load(var_path)
 noaccel = load(noaccel_path)
 thermal = load(thr_path)
 gpu = load(gpu_path)
+llama = load(llama_path)
 
 inv_summary = inventory.get("summary", {})
 
@@ -584,6 +640,10 @@ gpu_verdict = gpu.get("verdict", "info")
 gpu_reasons = gpu.get("verdict_reasons") or []
 gpu_details = {k: v for k, v in gpu.items() if k not in ("verdict", "verdict_reasons")}
 
+llama_verdict = llama.get("verdict", "info")
+llama_reasons = llama.get("verdict_reasons") or []
+llama_details = {k: v for k, v in llama.items() if k not in ("verdict", "verdict_reasons")}
+
 skipped_phases = {
     "6_display": "run ./Verification/scripts/display-test.sh and fill in manual_responses",
     "7_physical": "follow Runbook Phase 7 manual checklist",
@@ -645,6 +705,7 @@ phases = {
     "4b_cpu_variance_noaccel": phase_block(noaccel_verdict, noaccel_details.get("warmup_sec", 0) + noaccel_details.get("iterations", 0) * noaccel_details.get("seconds_per_iter", 0) + noaccel_details.get("burst_sec", 0), noaccel_details, noaccel_reasons),
     "5_thermal_load": phase_block(thermal_verdict, thermal_details.get("duration_s", 600), thermal_details, thermal_reasons),
     "13_gpu_variance": phase_block(gpu_verdict, int(gpu_details.get("wall_seconds") or 0), gpu_details, gpu_reasons),
+    "14_llama_bench": phase_block(llama_verdict, int(llama_details.get("wall_seconds") or 0), llama_details, llama_reasons),
 }
 for name, hint in skipped_phases.items():
     phases[name] = phase_block("skipped", 0, {"note": hint}, ["not run by orchestrator"])

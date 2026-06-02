@@ -1,6 +1,6 @@
 # Security
 
-Shakedown runs entirely on the user's own Mac. The surface area is small: a handful of short shell scripts plus inline Python heredocs, no external dependencies beyond what ships with macOS, no outbound network calls, and no daemons or persistent components. Everything is local. Auditing the scripts before running them is encouraged. They are pure bash and Python, no minified or obfuscated code, and short enough to read end to end in a few minutes. One exception, opt-in only: the `--gpu` phase compiles a small Metal kernel at runtime (see below).
+Shakedown runs entirely on the user's own Mac. The surface area is small: a handful of short shell scripts plus inline Python heredocs, no external dependencies beyond what ships with macOS, and no daemons or persistent components. The default `./run` makes no outbound network calls and runs no third-party code. Everything is local and auditable: the scripts are pure bash and Python, no minified or obfuscated code, short enough to read end to end in a few minutes. Two opt-in exceptions, both off by default and disclosed below: the `--gpu` phase compiles a small Metal kernel at runtime, and the `--llama` phase clones and builds llama.cpp and reaches the network.
 
 ## What the scripts do with elevated privileges
 
@@ -8,11 +8,15 @@ Shakedown runs entirely on the user's own Mac. The surface area is small: a hand
 - No other script asks for, requires, or uses elevated privileges.
 - All other data collection is unprivileged: SHA-256 over a fixed in-memory 1 MB buffer for the CPU workload (deterministic; no I/O), hardware facts via `system_profiler` / `ioreg` / `sysctl`, and battery state via `ioreg AppleSmartBattery`.
 - Writes are confined to the repo's `Reports/` directory and short-lived tempfiles under `/var/folders/.../shakedown-*` (the system per-user temp area). Nothing is written elsewhere.
-- No outbound network requests are made by any script. Reports stay on the local disk unless the user chooses to share them.
+- The default `./run` makes no outbound network requests. The opt-in `--llama` phase is the sole exception (it clones llama.cpp and may download a model); see below. Reports stay on the local disk unless the user chooses to share them.
 
-## Optional GPU phase (`--gpu`)
+## Code that runs beyond pure bash + Python
 
-The default `./run` is pure bash plus Python stdlib and ships no compiled binaries. The opt-in `--gpu` phase is the one exception: a real GPU load needs a GPU kernel, so `gpu-variance.sh` compiles a small Metal compute kernel with `swiftc` at runtime. The full Metal and Swift source is inline in the script's heredoc, auditable the same way as everything else: read it before running. Nothing pre-compiled is shipped, the compiled binary lives only in a per-user tempfile deleted on exit, the kernel runs read-mostly FMA math over a scratch buffer, and the phase makes no network calls. If `swiftc` or a Metal device isn't available it skips cleanly. To keep the run fully interpreted, don't pass `--gpu`.
+Three phases go past "interpreted, offline" scripts. The first is on by default but never touches the network; the other two are opt-in and off unless you ask for them. Nothing pre-compiled is ever shipped in the repo.
+
+- **Phase 12 memory bandwidth (default).** `memory-bandwidth.sh` prefers a vendored STREAM triad: it compiles `stream-triad.c` with the `clang` from the Command Line Tools, runs it, and deletes the binary. The C source is in the repo and short enough to read. No network, no shipped binary, no privileges. If `clang` is unavailable it falls back to the pure-Python `memmove` proxy.
+- **`--gpu` (opt-in, offline).** `gpu-variance.sh` compiles a small Metal compute kernel with `swiftc` at runtime. The Metal and Swift source is inline in the script's heredoc; read it before running. The compiled binary lives in a per-user tempfile deleted on exit, the kernel runs read-mostly FMA math over a scratch buffer, and it makes no network calls. Skips cleanly if `swiftc` or a Metal device is unavailable.
+- **`--llama` (opt-in, reaches the network).** This is the only phase that leaves the machine and runs third-party code. `llama-bench.sh` clones llama.cpp at a pinned ref into `~/.cache/shakedown/llama`, builds it with `cmake`, may download a small GGUF model (a pinned `LLAMA_MODEL_URL`, or a local `LLAMA_MODEL` you provide), and runs `llama-bench`. It is off unless you pass `--llama`, and it skips cleanly when `git` / `cmake` / the network / a model is unavailable. The clone is pinned and the cache is reused, so you can audit exactly what was fetched. The auto-download is not integrity-checked unless you set `LLAMA_MODEL_SHA256` (a complete but corrupted or tampered download would otherwise be cached and run); for a guaranteed-consistent model, point `LLAMA_MODEL` at a local `.gguf` you trust. To keep the run fully offline and free of third-party code, simply don't pass `--llama`.
 
 ## Privacy in submitted reports
 
