@@ -9,7 +9,7 @@ Every QA run produces two artifacts in `Reports/`:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `schema_version` | string | yes | Semver of the schema. Currently `"1.1"`. |
+| `schema_version` | string | yes | Semver of the schema. Currently `"1.2"`. |
 | `shakedown_version` | string | yes | Tool version that produced the report (e.g. `"0.1.0"`). |
 | `timestamp` | string | yes | ISO 8601 UTC. |
 | `illustrative` | bool | no | `true` for hand-crafted samples (under `examples/sample-report-*`). Aggregator must filter these out. |
@@ -201,9 +201,93 @@ Why `sudo purge` between write and read: without dropping the page cache, the re
 
 `verdict: "skipped"` if free disk space is less than 2× the test size.
 
+As of schema 1.2 the phase carries a conservative warn-only floor (`ssd_floor_mb_per_s`, default 500). When the page cache was actually dropped and read or write falls below it, the verdict becomes `"warn"` with an advisory reason. Every NVMe-equipped Mac since ~2016 clears well over 1000 MB/s sequential, so a number this low points at a real problem (the documented 256 GB single-NAND-die regression on the M2 Air and base 13" MBP, a failing drive, or pre-NVMe SATA/Fusion storage). It is a floor, not a calibrated band: chassis-family pass/fail thresholds still land in v0.3.
+
+## Phase 12 (`12_memory_bandwidth`): full detail
+
+Produced by `memory-bandwidth.sh`. Multi-threaded sequential `ctypes.memmove` copy, one worker per P-core, over buffers sized to exceed the system-level cache so it measures DRAM bandwidth, not cache. Comparable across submissions grouped by `unit.chip` + `unit.memory_gb`.
+
+```json
+{
+  "verdict": "info",
+  "duration_s": 10,
+  "details": {
+    "workload": "multi-threaded sequential memcpy (ctypes.memmove), DRAM-bound",
+    "workers": 12,
+    "per_buffer_mb": 64,
+    "total_working_set_mb": 1536,
+    "iterations": 5,
+    "seconds_per_iter": 2,
+    "copy_bandwidth_gb_per_s": [98.2, 97.8, 98.5, 98.1, 97.9],
+    "mean_copy_gb_per_s": 98.1,
+    "min_copy_gb_per_s": 97.8,
+    "max_copy_gb_per_s": 98.5,
+    "spread_pct": 0.71,
+    "touched_bandwidth_gb_per_s_mean": 196.2,
+    "wall_seconds": 10.4,
+    "data_quality": "ok",
+    "data_quality_notes": []
+  },
+  "verdict_reasons": [
+    "mean copy 98.1 GB/s (read+write ~196.2 GB/s touched) across 12 workers, spread 0.7%",
+    "informational in v0.2; calibrated pass/fail thresholds land in v0.3"
+  ]
+}
+```
+
+`copy_bandwidth_gb_per_s` counts bytes copied (N per `memmove`). Each copy also reads N and writes N, so `touched_bandwidth_gb_per_s_mean` (2x the copy mean) is the read+write traffic the controller actually moved. This is a lower bound on a full STREAM triad: scale / add / triad need elementwise arithmetic that pure Python can't do at memory speed without a native kernel. `memmove` is the honest stdlib proxy, and it still catches a memory subsystem that is slow or inconsistent across runs. A single thread cannot saturate the multi-channel controllers on Apple Silicon, so the test is multi-threaded the way STREAM is built with OpenMP.
+
+`verdict: "skipped"` when there is not enough RAM to size cache-busting buffers for the worker count (the working set is capped at 40% of physical memory).
+
+## Phase 4b (`4b_cpu_variance_noaccel`): full detail
+
+Produced by `cpu-variance.sh` with `WORKLOAD=blake2b`: the same script, the same verdict logic, a different workload. BLAKE2b has no dedicated CPU instruction, so it runs on the integer pipelines instead of the SHA engine and catches batch defects that SHA-NI / the Apple crypto coprocessor would hide. Opt-in (`./run --noaccel`).
+
+The `details` shape is identical to Phase 4 (`4_cpu_variance`), with `workload` set to the BLAKE2b string. When it runs it emits a real `pass` / `warn` / `fail` verdict against the same chassis-agnostic variance thresholds (variance is a within-unit consistency measure, so the thresholds transfer across workloads). The orchestrator runs it right after Phase 4 on the already-hot chassis, with a short re-warm and no cold burst.
+
+`verdict: "skipped"` when `--noaccel` is not passed.
+
+## Phase 13 (`13_gpu_variance`): full detail
+
+Produced by `gpu-variance.sh`. Opt-in (`./run --gpu`). Compiles a small Metal compute kernel with `swiftc` at runtime (no binary is shipped in the repo) and runs sustained FMA work, measuring per-iteration GFLOP/s the same way the CPU variance test measures throughput. The GPU is the bigger thermal contributor on Apple Silicon, so this surfaces GPU-side batch variance the CPU phases miss.
+
+```json
+{
+  "verdict": "info",
+  "duration_s": 16,
+  "details": {
+    "workload": "metal-compute fma burn (GPU sustained FP throughput variance)",
+    "device": "Apple M5 Max",
+    "low_power": false,
+    "iterations": 5,
+    "seconds_per_iter": 3,
+    "threads_per_dispatch": 1048576,
+    "fma_iters_per_thread": 4096,
+    "throughput_gflops": [8120.4, 8104.9, 8118.2, 8099.7, 8110.1],
+    "mean_gflops": 8110.7,
+    "min_gflops": 8099.7,
+    "max_gflops": 8120.4,
+    "spread_pct": 0.256,
+    "max_to_min_ratio": 1.003,
+    "early_vs_late_decline_pct": 0.12,
+    "wall_seconds": 16,
+    "data_quality": "ok",
+    "data_quality_notes": []
+  },
+  "verdict_reasons": [
+    "Apple M5 Max: mean 8111 GFLOP/s, spread 0.3%, ratio 1.00x",
+    "informational in v0.2; GPU variance thresholds land once the corpus has baselines"
+  ]
+}
+```
+
+This is the one phase that is not pure bash + Python stdlib: a real GPU load needs a GPU kernel. The Metal source lives in the `gpu-variance.sh` heredoc; read it before running. The phase degrades to `verdict: "skipped"` (it never fails the run) when `swiftc` is absent, the Metal source fails to compile, or no Metal device is available (headless / SSH session, or an Intel Mac without a usable GPU context). See [SECURITY.md](../SECURITY.md) for the opt-in-compile disclosure.
+
+`verdict: "skipped"` when `--gpu` is not passed, or when the GPU / toolchain is unavailable.
+
 ## Note on phase key ordering
 
-The phase keys (`0_preflight`, `1_inventory`, ... `10_race_bench`, `11_ssd_test`) sort alphabetically rather than numerically (`10` comes before `2` lexicographically). JSON output preserves the orchestrator's insertion order so human-readable reports render in run order: preflight, inventory, battery, sensors, race, ssd, cpu_variance, thermal_load, then the skipped manual phases. Parsers iterating phase names should not assume numeric sort order.
+The phase keys (`0_preflight`, `1_inventory`, ... `4b_cpu_variance_noaccel`, `10_race_bench`, `12_memory_bandwidth`, `13_gpu_variance`) sort alphabetically rather than numerically (`10` comes before `2` lexicographically, and `4b` sorts after `4`). JSON output preserves the orchestrator's insertion order so human-readable reports render in run order: preflight, inventory, battery, sensors, race, ssd, memory_bandwidth, cpu_variance, cpu_variance_noaccel, thermal_load, gpu_variance, then the skipped manual phases. Parsers iterating phase names should not assume numeric sort order.
 
 ## Privacy / submission-safety
 
@@ -233,3 +317,4 @@ If a test methodology changes (e.g. variance test gains a new metric, or thresho
 
 - **1.0** → initial release schema (phases 0-9).
 - **1.1** → added phases 10_race_bench and 11_ssd_test (informational; pass/fail thresholds pending v0.3 calibration corpus). Backward compatible: reports without these phases still validate as 1.0 shape.
+- **1.2** → added phases 12_memory_bandwidth (informational), 4b_cpu_variance_noaccel (opt-in non-accelerated variance, real pass/warn/fail when run), and 13_gpu_variance (opt-in Metal compute, informational). Added a conservative warn-only floor to 11_ssd_test (`ssd_floor_mb_per_s`) and split the `active-cooled-pro` thermal class into `active-cooled-pro-14` / `active-cooled-pro-16` (the bare class stays valid as the 16"-equivalent, so older reports and presets still compare). Backward compatible: 4b and 13 are `skipped` placeholders unless opted in.
