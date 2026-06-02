@@ -39,7 +39,9 @@ Or without a preset, which auto-detects chassis class from `system_profiler` (fi
 ./run
 ```
 
-The orchestrator runs the automated phases (preflight → inventory → battery → race benchmark → SSD test → memory bandwidth → CPU variance → thermal load) end-to-end, asks for sudo once upfront (Phase 5 and the SSD page-cache drop need it), and writes a SCHEMA-compliant report to `Reports/local/` plus a sanitized PR-able copy to `Reports/submissions/`. Two heavier passes are opt-in: `--noaccel` adds a non-accelerated (BLAKE2b) variance pass, and `--gpu` adds a Metal GPU compute pass. Runtime ~20 min on Intel, ~27 min on Air, ~47 min on MacBook Pro (add ~6 min for `--noaccel`).
+The orchestrator runs the automated phases (preflight → inventory → battery → race benchmark → SSD test → memory bandwidth → CPU variance → thermal load) end-to-end, asks for sudo once upfront (Phase 5 and the SSD page-cache drop need it), and writes a SCHEMA-compliant report to `Reports/local/` plus a sanitized PR-able copy to `Reports/submissions/`. Opt-in flags add heavier passes: `--noaccel` (a non-accelerated BLAKE2b variance pass), `--gpu` (a Metal GPU compute pass), and `--llama` (clones and builds llama.cpp for a combined CPU+GPU+memory AI load). `--store` bundles the thorough profile for verifying a new unit. Runtime ~20 min on Intel, ~27 min on Air, ~47 min on MacBook Pro.
+
+> Verifying a new purchase, especially in a store you can't easily return to? The [Benchmark Reference](Verification/Benchmark%20Reference.md) is the install-this / run-this / expected-score guide (sourced per-generation Cinebench + Geekbench baselines, the in-store and hotel protocols, and crowd-sourced live-lookup links). To diff your unit against a known-good sibling, run `Verification/scripts/compare-reports.sh reference.json yours.json`.
 
 `./run --no-sudo` skips the 10-min thermal phase (the only phase that needs sudo) for a half-runtime no-password variance-only pass.
 
@@ -61,11 +63,12 @@ See [`examples/sample-report-illustrative/`](examples/sample-report-illustrative
 | 3 | Sensor & port inventory | (uses Phase 1 output) |
 | 10 | Race benchmark (cold) | `xz -9 -T<P>` of a 200 MB random blob → `race-bench.sh` |
 | 11 | SSD sequential read/write (cold) | 2 GB incompressible random data, page cache dropped between → `ssd-test.sh` |
-| 12 | Memory bandwidth (cold) | multi-threaded `memmove` over cache-busting buffers → `memory-bandwidth.sh` |
+| 12 | Memory bandwidth (cold) | multi-threaded STREAM triad (vendored C, clang at runtime) with a `memmove` fallback → `memory-bandwidth.sh` |
 | 4 | **CPU performance variance** | 5 s burst + chassis-class-aware warmup (300 s on Pro, 60 s on Air) + 5 × 60 s timed iterations, parallel SHA-256 → `cpu-variance.sh` |
 | 4b | Non-accelerated CPU variance (opt-in `--noaccel`) | same methodology with BLAKE2b (no crypto instruction, hits the integer pipelines) → `cpu-variance.sh` |
 | 5 | Sustained thermal load (chassis-class-aware thresholds) | 10 min continuous + `powermetrics` sampling → `thermal-load.sh` |
 | 13 | GPU compute variance (opt-in `--gpu`) | sustained Metal FMA load, compiled with `swiftc` at runtime → `gpu-variance.sh` |
+| 14 | Combined CPU+GPU+memory (opt-in `--llama`) | clones + builds llama.cpp, runs `llama-bench` (AI inference load) → `llama-bench.sh` |
 | 6 | Display visual inspection | fullscreen color cycle in Safari → `display-test.sh` |
 | 7 | Manual physical inspection | hinge, keyboard, speakers, ports, Touch ID, etc. (runbook checklist) |
 | 8 | Apple Diagnostics | reboot + Cmd-D |
@@ -114,16 +117,21 @@ mac-shakedown/
 ├── Verification/                   # generation-agnostic test machinery
 │   ├── Runbook.md                  # the procedure
 │   ├── Pass-Fail Criteria.md       # thresholds (parameterized by chassis class)
+│   ├── Benchmark Reference.md      # install/run/expected-score + in-store protocol
+│   ├── per-core-pinning.md         # why macOS has no per-core affinity (methodology note)
 │   └── scripts/
 │       ├── run-shakedown.sh        # the orchestrator (`./run` execs this)
 │       ├── inventory.sh            # system_profiler + sysctl → JSON
 │       ├── battery.sh              # ioreg battery health → JSON
 │       ├── race-bench.sh           # cold xz race → JSON
 │       ├── ssd-test.sh             # sequential SSD read/write → JSON (sudo for purge)
-│       ├── memory-bandwidth.sh     # multi-threaded memmove bandwidth → JSON
+│       ├── memory-bandwidth.sh     # STREAM triad (stream-triad.c) or memmove fallback → JSON
+│       ├── stream-triad.c          # vendored STREAM-style triad, compiled at runtime
 │       ├── cpu-variance.sh         # burst + warmup + 5×60s timed iters → JSON (WORKLOAD=blake2b for 4b)
 │       ├── thermal-load.sh         # 10-min sustained + powermetrics → JSON (sudo)
 │       ├── gpu-variance.sh         # opt-in Metal compute variance, swiftc at runtime → JSON
+│       ├── llama-bench.sh          # opt-in llama.cpp combined load (clone+build) → JSON
+│       ├── compare-reports.sh      # diff two reports (unit vs known-good sibling)
 │       └── display-test.sh         # fullscreen color cycle (HTML)
 ├── targets/                        # preset SKU configs
 │   ├── README.md
@@ -180,12 +188,13 @@ The manual phases (display, physical inspection, Apple Diagnostics, idle drain) 
 
 Wave 7 shipped most of the original roadmap: the non-accelerated variance pass (Phase 4b, BLAKE2b), GPU compute variance (Phase 13, Metal), memory bandwidth (Phase 12), a conservative SSD floor, the `active-cooled-pro-14` / `active-cooled-pro-16` thermal sub-classes, and M1-M4 plus Intel-era generation calibrations.
 
+Wave 8 added the in-store toolkit: the `--store` thorough profile, `compare-reports.sh` (diff your unit against a known-good sibling), a sourced [Benchmark Reference](Verification/Benchmark%20Reference.md), a vendored STREAM triad in Phase 12 (real copy / scale / add / triad), and an opt-in `--llama` phase that builds llama.cpp for a combined CPU+GPU+memory load.
+
 Still open:
 
 - **Hosted aggregator.** Eventually, submission via API to a public site so reports aren't reviewed by hand. Until then, the PR-submission flow above *is* the aggregator. Slower, but no infra, and PR review catches PII before merge.
 - **Calibrated v0.3 thresholds.** The race / SSD / memory-bandwidth / GPU phases are informational in v0.2. Once the submission corpus has per-SKU baselines, they get chassis-family pass/fail bands. The SSD floor is the only band today, and it's a conservative sanity floor (flags below 500 MB/s with the cache dropped), not a calibrated range.
 - **Per-core pinning.** macOS lacks public CPU affinity APIs, so we can't pin workers to specific cores; a defective single core gets averaged across N P-cores. Reporting `worker_imbalance_pct_per_iter` is the partial mitigation. The investigation is written up in [`Verification/per-core-pinning.md`](Verification/per-core-pinning.md): the short version is that `THREAD_AFFINITY_POLICY` is ignored on Apple Silicon and QoS hints only steer between the P and E clusters, so there's no per-core pinning to be had today.
-- **Full STREAM triad.** Phase 12 measures copy bandwidth via `memmove` (a lower bound on the memory subsystem). Scale / add / triad need a native kernel, which would break the pure-stdlib property of the default run.
 
 ## Origin
 

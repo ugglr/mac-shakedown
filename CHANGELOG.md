@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added: in-store verification toolkit (wave 8)
+
+- **`--store` thorough profile.** One flag for verifying a new unit (M5 especially): turns on `--noaccel` and `--gpu` and runs a longer warmup with more iterations, so an intermittent batch defect has more chances to surface. Honors any timing env vars the user set.
+- **`compare-reports.sh`.** Diffs two reports side by side (a known-good sibling vs the unit under test) and flags every metric where the unit materially trails. Since the absolute thresholds aren't calibrated yet, this unit-to-unit comparison is the most trustworthy in-store signal.
+- **Benchmark Reference** (`Verification/Benchmark Reference.md`). Install-this / run-this / expected-score guide with sourced, adversarially-verified Cinebench R24 + Geekbench 6 baselines per generation (M1-M5 families + Intel 2019), the in-store and hotel protocols, the Hong Kong return constraint, and live-lookup links (Geekbench Browser, mianibench.com crowd distributions). Corrected the stale M5 Max baseline in the m5-2026 calibration (~25-28k to ~29,000-29,400 GB6 multi-core).
+- **Phase 12 STREAM triad.** Memory bandwidth now prefers a vendored single-file STREAM triad (`stream-triad.c`: real copy / scale / add / triad), compiled at runtime with clang, no network. Falls back to the pure-Python `memmove` proxy when clang is unavailable. Closes the copy-only-proxy gap; `details.method` records which ran.
+- **Phase 14 `--llama` (opt-in).** Clones and builds llama.cpp at a pinned ref and runs `llama-bench`, a combined CPU+GPU+memory AI load (the workload class the M5 defect was reported on). Off by default; it reaches the network and runs third-party code (disclosed in SECURITY.md) and skips cleanly without git / cmake / network / model.
+- **Schema 1.3.** Phase 12 gains the triad method and `*_triad_gb_per_s` fields; new phase key `14_llama_bench` (a `skipped` placeholder by default), added to the CI submission-audit required-phase list. Backward compatible: both phase-12 methods keep `mean_copy_gb_per_s`, and 14 is skipped unless opted in.
+
 ### Added: roadmap completion (wave 7)
 
 - **Phase 4b non-accelerated CPU variance** (`cpu-variance.sh WORKLOAD=blake2b`, opt-in `./run --noaccel`). Reruns the Phase 4 variance methodology with BLAKE2b, which has no dedicated CPU instruction and so exercises the integer pipelines and memory instead of the SHA engine. Catches batch defects that SHA-NI / the Apple crypto coprocessor hide. Same script and verdict logic as Phase 4 (no duplicated thresholds): real `pass`/`warn`/`fail` when run, `skipped` placeholder otherwise. Runs on the already-hot chassis after Phase 4 with a short re-warm and no cold burst. Adds ~6 min when enabled.
