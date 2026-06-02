@@ -1,0 +1,9 @@
+{
+  "name": "MacBook Air, M2, 8/16/24 GB",
+  "chip_pattern": "Apple M2",
+  "memory_gb": null,
+  "model_must_include": "Air",
+  "calibration_dir": "examples/m2-2022",
+  "thermal_chassis_class": "fanless",
+  "_note": "Generation-representative preset for the fanless M2 Air. The headline M2 issue is the 256 GB single-NAND-die SSD regression (Phase 11): a healthy 256 GB unit reads roughly half what a 512 GB unit does, so read Phase 11 against capacity rather than treating it as a fault. memory_gb is null; pin it when verifying a specific config. See examples/m2-2022/."
+}

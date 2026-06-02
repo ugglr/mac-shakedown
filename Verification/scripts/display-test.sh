@@ -1,5 +1,5 @@
 #!/bin/bash
-# display-test.sh — open a fullscreen color cycle in Safari for visual inspection.
+# display-test.sh: open a fullscreen color cycle in Safari for visual inspection.
 # Press F to fullscreen, Space to start cycling, ← / → to navigate, Esc to exit
 # fullscreen, Cmd-W to close the tab when done.
 
@@ -41,12 +41,12 @@ body{display:flex;flex-direction:column;align-items:center;justify-content:cente
 <div class="controls-hint">F fullscreen · Space play/pause · ← → navigate · Esc exit fullscreen · Cmd-W close tab</div>
 <script>
 const colors = [
-  {bg:"#ffffff", name:"WHITE — look for dead/dim pixels and tint patches"},
-  {bg:"#ff0000", name:"RED — look for stuck pixels (black or wrong color)"},
-  {bg:"#00ff00", name:"GREEN — look for stuck pixels"},
-  {bg:"#0000ff", name:"BLUE — look for stuck pixels"},
-  {bg:"#808080", name:"50% GRAY — look for backlight uniformity / patches"},
-  {bg:"#000000", name:"BLACK — dim ambient light, look for backlight bleed at edges"},
+  {bg:"#ffffff", name:"WHITE, look for dead/dim pixels and tint patches"},
+  {bg:"#ff0000", name:"RED, look for stuck pixels (black or wrong color)"},
+  {bg:"#00ff00", name:"GREEN, look for stuck pixels"},
+  {bg:"#0000ff", name:"BLUE, look for stuck pixels"},
+  {bg:"#808080", name:"50% GRAY, look for backlight uniformity / patches"},
+  {bg:"#000000", name:"BLACK, dim ambient light, look for backlight bleed at edges"},
 ];
 const duration = SECS_PLACEHOLDER * 1000;
 let idx = -1, paused = true, timer = null;

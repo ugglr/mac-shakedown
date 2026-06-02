@@ -1,0 +1,9 @@
+{
+  "name": "MacBook Air, M1, 8/16 GB",
+  "chip_pattern": "Apple M1",
+  "memory_gb": null,
+  "model_must_include": "Air",
+  "calibration_dir": "examples/m1-2020",
+  "thermal_chassis_class": "fanless",
+  "_note": "Generation-representative preset for the fanless M1 Air. memory_gb is null (8 or 16 GB); clone and pin it for a hard assert. chip_pattern 'Apple M1' is a substring, so it also matches M1 Pro/Max units that share the m1-2020 calibration. The M1 generation surfaced few thermal/variance defects, so weight the display (Phase 6) and functional (Phase 7) checks. See examples/m1-2020/."
+}

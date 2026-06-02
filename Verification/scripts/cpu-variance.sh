@@ -1,23 +1,28 @@
 #!/bin/bash
-# cpu-variance.sh — sustained parallel SHA-256, time-capped iterations on a
+# cpu-variance.sh: sustained parallel SHA-256, time-capped iterations on a
 # pre-warmed (saturated) chassis. Detects batch-level performance variance
 # (~41.5% multi-core variance reported on M5 Max bad batches in early 2026).
 #
-# CAVEAT — what this test actually measures:
+# CAVEAT: what the default sha256 workload measures.
 # SHA-256 is hardware-accelerated on Apple Silicon. The test stresses the SHA
-# engines, multiprocessing scheduling, and chassis thermal mass — but does NOT
+# engines, multiprocessing scheduling, and chassis thermal mass, but does NOT
 # probe integer pipelines, memory bandwidth, or large-cache thermal behavior as
 # deeply as Cinebench / Geekbench would. Public reports of the M5 Max defect
 # came from those benchmarks; this test catches *correlated* signals (timing
 # variance + thermal saturation behavior) but isn't 1:1 with their workloads.
-# A non-accelerated workload pass is on the roadmap.
+#
+# Phase 4b (WORKLOAD=blake2b) closes that gap: BLAKE2b has no dedicated CPU
+# instruction, so it runs on the integer pipelines and catches batch defects
+# that SHA-NI / the Apple crypto engine would hide. Same variance methodology,
+# different workload. It is opt-in (./run --noaccel) because it adds a second
+# sustained pass.
 #
 # Test design:
 #   1) BURST_SEC of cold-start measurement      (peak boost throughput)
 #   2) WARMUP_SEC of continuous load            (chassis to thermal equilibrium)
 #   3) ITERATIONS × SECONDS_PER_ITER timed runs (steady-state throughput, MB/s)
 #   4) Compute spread, max-to-min ratio, early-vs-late decline, and
-#      burst-to-steady ratio (advisory — flags possible always-throttled units)
+#      burst-to-steady ratio (advisory, flags possible always-throttled units)
 #
 # Output: JSON to stdout. Per-iteration progress to stderr.
 #
@@ -31,20 +36,26 @@
 #   SECONDS_PER_ITER  default 60
 #   WORKERS           default = P-cores
 #   CHASSIS_CLASS     default active-cooled-pro
+#                       active-cooled-pro / -14 / -16 share this warmup; they
+#                       differ only in thermal-load.sh thresholds.
+#   WORKLOAD          default sha256 (hardware-accelerated). Set to blake2b for
+#                       the non-accelerated Phase 4b pass: no CPU crypto
+#                       instruction, so it stresses the integer pipelines and
+#                       memory the way Cinebench / Geekbench do.
 
 set -euo pipefail
 
 CHASSIS_CLASS=${CHASSIS_CLASS:-active-cooled-pro}
 
 case "$CHASSIS_CLASS" in
-  fanless)            DEFAULT_WARMUP=60 ;;
-  active-cooled-pro)  DEFAULT_WARMUP=300 ;;
-  desktop)            DEFAULT_WARMUP=180 ;;
-  intel-laptop)       DEFAULT_WARMUP=180 ;;  # Intel laptops saturate fast
-  intel-desktop)      DEFAULT_WARMUP=180 ;;
+  fanless)                                                    DEFAULT_WARMUP=60 ;;
+  active-cooled-pro|active-cooled-pro-14|active-cooled-pro-16) DEFAULT_WARMUP=300 ;;
+  desktop)                                                    DEFAULT_WARMUP=180 ;;
+  intel-laptop)                                               DEFAULT_WARMUP=180 ;;  # Intel laptops saturate fast
+  intel-desktop)                                              DEFAULT_WARMUP=180 ;;
   *)
     echo "cpu-variance.sh: unknown CHASSIS_CLASS='$CHASSIS_CLASS'" >&2
-    echo "  use one of: fanless | active-cooled-pro | desktop | intel-laptop | intel-desktop" >&2
+    echo "  use one of: fanless | active-cooled-pro | active-cooled-pro-14 | active-cooled-pro-16 | desktop | intel-laptop | intel-desktop" >&2
     exit 2
     ;;
 esac
@@ -53,6 +64,15 @@ BURST_SEC=${BURST_SEC:-5}
 WARMUP_SEC=${WARMUP_SEC:-$DEFAULT_WARMUP}
 ITERATIONS=${ITERATIONS:-5}
 SECONDS_PER_ITER=${SECONDS_PER_ITER:-60}
+
+WORKLOAD=${WORKLOAD:-sha256}
+case "$WORKLOAD" in
+  sha256|blake2b) ;;
+  *)
+    echo "cpu-variance.sh: unknown WORKLOAD='$WORKLOAD' (use sha256 or blake2b)" >&2
+    exit 2
+    ;;
+esac
 
 # WORKERS: probe P-cores then fall back; treat empty string as unset.
 if [[ -z "${WORKERS:-}" ]]; then
@@ -67,9 +87,9 @@ if ! [[ "$WORKERS" =~ ^[0-9]+$ ]] || (( WORKERS < 1 )); then
 fi
 
 TOTAL=$((BURST_SEC + WARMUP_SEC + ITERATIONS * SECONDS_PER_ITER))
-echo "cpu-variance: chassis=$CHASSIS_CLASS, burst=${BURST_SEC}s, warmup=${WARMUP_SEC}s, then $ITERATIONS × ${SECONDS_PER_ITER}s timed iters; $WORKERS workers (~${TOTAL}s = $((TOTAL / 60))m total)" >&2
+echo "cpu-variance: workload=$WORKLOAD, chassis=$CHASSIS_CLASS, burst=${BURST_SEC}s, warmup=${WARMUP_SEC}s, then $ITERATIONS × ${SECONDS_PER_ITER}s timed iters; $WORKERS workers (~${TOTAL}s = $((TOTAL / 60))m total)" >&2
 
-python3 - "$BURST_SEC" "$WARMUP_SEC" "$ITERATIONS" "$SECONDS_PER_ITER" "$WORKERS" "$CHASSIS_CLASS" <<'PYEOF'
+python3 - "$BURST_SEC" "$WARMUP_SEC" "$ITERATIONS" "$SECONDS_PER_ITER" "$WORKERS" "$CHASSIS_CLASS" "$WORKLOAD" <<'PYEOF'
 import hashlib
 import json
 import multiprocessing
@@ -77,7 +97,7 @@ import statistics
 import sys
 import time
 
-# macOS Python defaults to "spawn" which re-imports the script — fails for stdin.
+# macOS Python defaults to "spawn" which re-imports the script, fails for stdin.
 multiprocessing.set_start_method("fork", force=True)
 
 BURST_SEC        = int(sys.argv[1])
@@ -86,11 +106,17 @@ ITERATIONS       = int(sys.argv[3])
 SECONDS_PER_ITER = int(sys.argv[4])
 WORKERS          = int(sys.argv[5])
 CHASSIS_CLASS    = sys.argv[6]
+WORKLOAD         = sys.argv[7]
 
-DATA = bytes(1024 * 1024)  # 1 MB of zeros — SHA-256 has no data-dependent fast paths
+# sha256 is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel.
+# blake2b (Phase 4b) has no dedicated CPU instruction, so it runs on the integer
+# pipelines and exercises the paths SHA-NI / the Apple crypto engine hide.
+HASH = hashlib.blake2b if WORKLOAD == "blake2b" else hashlib.sha256
+
+DATA = bytes(1024 * 1024)  # 1 MB of zeros; neither hash has a data-dependent fast path
 
 def worker(stop_at):
-    h = hashlib.sha256()
+    h = HASH()
     ops = 0
     while time.time() < stop_at:
         for _ in range(64):
@@ -118,7 +144,7 @@ if BURST_SEC > 0:
     print(f"  burst: {burst_mb:,} MB in {burst_elapsed:.2f}s = {burst_throughput:,.0f} MB/s",
           file=sys.stderr)
 
-# ---- 2) Warmup (discarded for variance) — chunked so we capture the tail ----
+# ---- 2) Warmup (discarded for variance), chunked so we capture the tail ----
 warmup_tail_throughput = None
 if WARMUP_SEC > 0:
     print(f"  warmup: {WARMUP_SEC}s to reach thermal equilibrium…", file=sys.stderr)
@@ -130,7 +156,7 @@ if WARMUP_SEC > 0:
         last_chunk_throughput, _, _, _, _, _ = run_window(sec)
         remaining -= sec
     warmup_tail_throughput = last_chunk_throughput
-    print(f"  warmup done (tail = {warmup_tail_throughput:,.0f} MB/s — discarded for spread)",
+    print(f"  warmup done (tail = {warmup_tail_throughput:,.0f} MB/s, discarded for spread)",
           file=sys.stderr)
 
 # ---- 3) Timed iterations ----
@@ -173,12 +199,12 @@ if len(throughputs) >= 4:
     decline_pct = round((early - late) / early * 100, 3) if early else None
 
 # Burst-to-steady ratio: ADVISORY. Without crowd-sourced calibration baseline
-# this is hard to interpret — record it for the aggregator to judge.
+# this is hard to interpret, record it for the aggregator to judge.
 burst_to_steady_ratio = None
 if burst_throughput and burst_throughput > 0:
     burst_to_steady_ratio = round(mean / burst_throughput, 4)
 
-# Within-iter worker imbalance — a single defective P-core would consistently
+# Within-iter worker imbalance, a single defective P-core would consistently
 # under-perform if the macOS scheduler happens to pin a worker to it. Healthy
 # units show < 5% median imbalance; > 10% suggests one worker (and possibly
 # one core) is consistently behind.
@@ -198,7 +224,7 @@ info_signals = []
 
 if dead_worker_iter is not None:
     fail_signals.append(
-        f"iteration {dead_worker_iter} had zero throughput (worker died) — verdict cannot be trusted"
+        f"iteration {dead_worker_iter} had zero throughput (worker died), verdict cannot be trusted"
     )
 
 # Spread
@@ -209,7 +235,7 @@ elif spread_pct > 5:
 
 # Max-to-min ratio (with explicit warn band)
 if ratio_max == float("inf"):
-    fail_signals.append("min throughput is 0 — cannot compute ratio")
+    fail_signals.append("min throughput is 0, cannot compute ratio")
 elif ratio_max >= 1.4:
     fail_signals.append(f"max-to-min ratio {ratio_max:.2f}× ≥ 1.4×")
 elif ratio_max >= 1.2:
@@ -222,26 +248,26 @@ if decline_pct is not None:
     elif decline_pct > 5:
         warn_signals.append(f"throughput declined {decline_pct:.1f}% in 5–10% warn range")
 
-# Burst-to-steady ratio — recorded as info, aggregator interprets.
+# Burst-to-steady ratio, recorded as info, aggregator interprets.
 if burst_to_steady_ratio is not None and burst_to_steady_ratio > 0.97:
     info_signals.append(
-        f"burst-to-steady {burst_to_steady_ratio:.2f}× — chassis gives back almost no thermal "
+        f"burst-to-steady {burst_to_steady_ratio:.2f}×, chassis gives back almost no thermal "
         f"headroom from cold; could indicate always-throttled unit, or just very strong cooling. "
         f"Compare against calibration baseline."
     )
 
-# Worker imbalance — partial mitigation for the no-CPU-pinning gap. macOS
+# Worker imbalance, partial mitigation for the no-CPU-pinning gap. macOS
 # schedules around a slow core, but if one worker is consistently 10%+ behind
 # even after that, surface it.
 if max_worker_imbalance_pct is not None:
     if max_worker_imbalance_pct > 20:
         fail_signals.append(
-            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}% — "
+            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}%, "
             f"one worker consistently behind by > 20%, possible single-core defect"
         )
     elif max_worker_imbalance_pct > 10:
         warn_signals.append(
-            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}% — "
+            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}%, "
             f"one worker behind by > 10%; rerun to confirm"
         )
 
@@ -252,7 +278,7 @@ if fail_signals:
 elif len(warn_signals) >= 2:
     verdict = "fail"
     fail_signals.append(
-        f"compound warning ({len(warn_signals)} independent warn signals) — escalated to fail"
+        f"compound warning ({len(warn_signals)} independent warn signals), escalated to fail"
     )
 elif warn_signals:
     verdict = "warn"
@@ -262,7 +288,7 @@ if not reasons:
     reasons.append(
         f"spread {spread_pct:.2f}%, ratio {ratio_max:.2f}×"
         + (f", decline {decline_pct:.2f}%" if decline_pct is not None else "")
-        + " — within healthy range"
+        + ", within healthy range"
     )
 
 result = {
@@ -290,7 +316,11 @@ result = {
     "max_worker_imbalance_pct": max_worker_imbalance_pct,
     "verdict": verdict,
     "verdict_reasons": reasons,
-    "workload": "sha256-parallel (hardware-accelerated on Apple Silicon — see script header CAVEAT)",
+    "workload": (
+        "blake2b-parallel (not hardware-accelerated; stresses integer pipelines, Phase 4b)"
+        if WORKLOAD == "blake2b" else
+        "sha256-parallel (hardware-accelerated on Apple Silicon; see script header CAVEAT)"
+    ),
 }
 print(json.dumps(result, indent=2))
 PYEOF

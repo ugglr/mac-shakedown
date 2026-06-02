@@ -1,9 +1,9 @@
 #!/bin/bash
-# inventory.sh — dump hardware inventory as JSON for the report's `unit` block.
+# inventory.sh: dump hardware inventory as JSON for the report's `unit` block.
 # Output: JSON to stdout. The `summary` block is the comparable / submission-safe
 # subset; serials are SHA-256 hashed by default (set INCLUDE_PLAINTEXT_SERIAL=1 to
 # also include the raw serial, e.g. for warranty cross-reference). The `_raw_…`
-# blocks contain the full system_profiler dump for local debugging — strip these
+# blocks contain the full system_profiler dump for local debugging, strip these
 # before submission to the aggregator (they may include Bluetooth-paired device
 # IDs, Wi-Fi SSIDs, USB device serials, etc.).
 
@@ -66,7 +66,7 @@ def first(d, k):
 hw = first(raw.get("SPHardwareDataType", {}), "SPHardwareDataType")
 sw = first(raw.get("SPSoftwareDataType", {}), "SPSoftwareDataType")
 
-# Memory size — guard against non-numeric sysctl output.
+# Memory size, guard against non-numeric sysctl output.
 memsize_raw = sysctl("hw.memsize")
 try:
     memsize_bytes = int(memsize_raw or 0)
@@ -93,14 +93,14 @@ summary = {
     "macos_version": sw.get("os_version"),
     "kernel_version": sw.get("kernel_version"),
     "boot_volume": sw.get("boot_volume"),
-    # Hashed serial — README claims this; this is where it actually happens.
+    # Hashed serial, README claims this; this is where it actually happens.
     "serial_hash": hash_serial(raw_serial),
 }
 if INCLUDE_PLAINTEXT_SERIAL:
     summary["serial_number"] = raw_serial
     summary["_warn"] = "plaintext serial included by INCLUDE_PLAINTEXT_SERIAL=1; strip before submission"
 
-# Storage (model + revision useful for comparison — Apple has shipped 256GB
+# Storage (model + revision useful for comparison, Apple has shipped 256GB
 # single-die SSD perf regressions in the past).
 storage = []
 nvme_root = raw.get("SPNVMeDataType", {}).get("SPNVMeDataType", [])
@@ -172,9 +172,9 @@ result = {
     "bluetooth_present": bt_present,
     "wifi_present": wifi_present,
     "power_adapter": adapter,
-    # Full system_profiler dump — kept for local debugging. Strip before
+    # Full system_profiler dump, kept for local debugging. Strip before
     # submitting to the aggregator: contains paired BT device IDs, Wi-Fi SSIDs,
-    # USB device serials, etc. — fingerprints the user environment.
+    # USB device serials, etc., fingerprints the user environment.
     "_raw_system_profiler": raw,
 }
 

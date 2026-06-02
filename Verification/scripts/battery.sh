@@ -1,5 +1,5 @@
 #!/bin/bash
-# battery.sh — battery health summary as JSON.
+# battery.sh: battery health summary as JSON.
 # Battery serial is SHA-256 hashed by default. Set INCLUDE_PLAINTEXT_SERIAL=1
 # to also include the raw battery serial (typically for warranty cross-reference).
 # `_raw_*` blocks are local-debug only; strip before submission.
@@ -152,7 +152,7 @@ result = {
     "manufacturer_code": bat.get("Manufacturer"),  # vendor code (DSY/ATL/SMP), not PII
     "battery_serial_hash": hash_serial(raw_battery_serial),
     "condition": condition,
-    # Local-debug only — strip before submission.
+    # Local-debug only, strip before submission.
     "_raw_ioreg": bat,
     "_raw_power_info": power,
 }

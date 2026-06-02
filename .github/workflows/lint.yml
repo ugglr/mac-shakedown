@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint:
-    # Static checks only — scripts target macOS at runtime, but shellcheck,
+    # Static checks only, scripts target macOS at runtime, but shellcheck,
     # python ast.parse, and json.tool are all platform-agnostic.
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +29,7 @@ jobs:
 
       - name: Syntax-check Python heredocs
         # Each script may contain one or more `python3 - <<'PYEOF' … PYEOF` blocks.
-        # Extract them with awk and run ast.parse — catches Python syntax errors
+        # Extract them with awk and run ast.parse, catches Python syntax errors
         # without executing macOS-only side effects (system_profiler, ioreg, etc.).
         run: |
           set -euo pipefail
@@ -68,9 +68,11 @@ jobs:
                           "target", "unit", "phases", "result", "result_reason",
                           "submission_safe"]
           REQUIRED_PHASES = ["0_preflight", "1_inventory", "2_battery", "3_sensors",
-                              "4_cpu_variance", "5_thermal_load", "6_display",
-                              "7_physical", "8_apple_diagnostics", "9_idle_drain",
-                              "10_race_bench", "11_ssd_test"]
+                              "4_cpu_variance", "4b_cpu_variance_noaccel",
+                              "5_thermal_load", "6_display", "7_physical",
+                              "8_apple_diagnostics", "9_idle_drain",
+                              "10_race_bench", "11_ssd_test", "12_memory_bandwidth",
+                              "13_gpu_variance"]
           FILENAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+-[0-9a-f]{4}\.json$")
 
           def find_keys(obj, predicate, path=""):
@@ -136,7 +138,7 @@ jobs:
               for e in errors:
                   print(f"  - {e}", file=sys.stderr)
               sys.exit(1)
-          print(f"audited {len(files)} submission file(s) — all clean")
+          print(f"audited {len(files)} submission file(s), all clean")
           PYEOF
 
       - name: Verify markdown links resolve to existing files
@@ -147,7 +149,7 @@ jobs:
         #
         # Implemented in Python instead of bash because the previous bash
         # version used `${path//%/\\x}` parameter-expansion escapes that
-        # behave differently in zsh — false positives for contributors
+        # behave differently in zsh, false positives for contributors
         # running this check locally on default-shell macOS.
         run: |
           python3 <<'PYEOF'

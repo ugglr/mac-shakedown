@@ -1,5 +1,5 @@
 #!/bin/bash
-# thermal-load.sh — sustained CPU load with powermetrics sampling.
+# thermal-load.sh: sustained CPU load with powermetrics sampling.
 # Requires sudo (powermetrics is privileged).
 # Output: JSON to stdout. Progress to stderr.
 #
@@ -35,16 +35,16 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 case "$CHASSIS_CLASS" in
-  fanless|active-cooled-pro|desktop|intel-laptop|intel-desktop) ;;
+  fanless|active-cooled-pro|active-cooled-pro-14|active-cooled-pro-16|desktop|intel-laptop|intel-desktop) ;;
   *)
     echo "thermal-load.sh: unknown CHASSIS_CLASS='$CHASSIS_CLASS'" >&2
-    echo "  use one of: fanless | active-cooled-pro | desktop | intel-laptop | intel-desktop" >&2
+    echo "  use one of: fanless | active-cooled-pro | active-cooled-pro-14 | active-cooled-pro-16 | desktop | intel-laptop | intel-desktop" >&2
     exit 2
     ;;
 esac
 
 if (( DURATION_SEC < 5 * SAMPLE_SEC )); then
-  echo "thermal-load.sh: DURATION_SEC ($DURATION_SEC) < 5*SAMPLE_SEC ($((5*SAMPLE_SEC))) — too short to sample meaningfully" >&2
+  echo "thermal-load.sh: DURATION_SEC ($DURATION_SEC) < 5*SAMPLE_SEC ($((5*SAMPLE_SEC))), too short to sample meaningfully" >&2
   exit 2
 fi
 
@@ -55,7 +55,7 @@ PMLOG=$(mktemp -t shakedown-pm.XXXXXX)
 PMERR=$(mktemp -t shakedown-pmerr.XXXXXX)
 LOADLOG=$(mktemp -t shakedown-load.XXXXXX)
 
-# Cleanup trap — kills the entire load process group (not just the parent
+# Cleanup trap, kills the entire load process group (not just the parent
 # Python) on exit, removes ephemeral logs but keeps PMLOG referenced in JSON.
 LOAD_PGID=""
 cleanup() {
@@ -66,11 +66,11 @@ cleanup() {
     kill -KILL -- "-$LOAD_PGID" 2>/dev/null || true
   fi
   rm -f "$LOADLOG" "$PMERR"
-  # PMLOG is intentionally retained — referenced in `raw_log_path`.
+  # PMLOG is intentionally retained, referenced in `raw_log_path`.
 }
 trap cleanup EXIT INT TERM
 
-# Background CPU load — runs in its own process group so we can kill the
+# Background CPU load, runs in its own process group so we can kill the
 # multiprocessing pool workers, not just the parent.
 set -m  # enable job control so the next backgrounded command becomes its own pgrp
 python3 - "$DURATION_SEC" "$WORKERS" > "$LOADLOG" 2>&1 <<'PYEOF' &
@@ -143,13 +143,13 @@ for blk in blocks:
         continue
     sd = {}
     fan_lines_in_block = 0
-    # Parse line-by-line — avoids DOTALL crossing block boundaries on malformed input.
+    # Parse line-by-line, avoids DOTALL crossing block boundaries on malformed input.
     for line in blk.splitlines():
         m = re.search(r"CPU die temperature:\s+([\d.]+)\s*C", line)
         if m: sd["cpu_die_temp_c"] = float(m.group(1))
         m = re.search(r"GPU die temperature:\s+([\d.]+)\s*C", line)
         if m: sd["gpu_die_temp_c"] = float(m.group(1))
-        # Ambient / chassis / battery / SoC temps — capture whatever powermetrics emits.
+        # Ambient / chassis / battery / SoC temps, capture whatever powermetrics emits.
         # Names vary by macOS version: Ambient, Battery temperature, etc.
         m = re.search(r"(Ambient|Battery|Bottom (?:Skin|case)|Top Skin|Outside)\s*(?:temperature)?:\s*([\d.]+)\s*C",
                       line, re.I)
@@ -167,16 +167,16 @@ for blk in blocks:
         # Apple Silicon combined power
         m = re.search(r"Combined Power \(CPU \+ GPU \+ ANE\):\s+([\d.]+)\s*mW", line)
         if m: sd["combined_power_mw"] = float(m.group(1))
-        # Intel frequency — two formats across macOS versions:
+        # Intel frequency, two formats across macOS versions:
         #   Sonoma+: "CPU Average frequency as fraction of nominal: 72.40% (1882.29 Mhz)"
         #            (the CPU number is on the preceding "CPU N duty cycles/s:" line)
         #   Legacy:  "CPU 0 frequency: 3192 MHz" (one line per core)
-        # Case-insensitive on the Mhz/MHz spelling — Sonoma uses lowercase 'h'.
+        # Case-insensitive on the Mhz/MHz spelling, Sonoma uses lowercase 'h'.
         m = re.search(r"^\s*CPU Average frequency as fraction of nominal:\s+[\d.]+%\s*\(([\d.]+)\s*M[Hh]z\)", line)
         if m: sd.setdefault("intel_cpu_freq_mhz", []).append(int(float(m.group(1))))
         m = re.search(r"^\s*CPU\s+\d+\s+frequency:\s+(\d+)\s+M[Hh]z", line)
         if m: sd.setdefault("intel_cpu_freq_mhz", []).append(int(m.group(1)))
-        # Intel package power — two formats:
+        # Intel package power, two formats:
         #   Sonoma+: "Intel energy model derived package power (CPUs+GT+SA): 6.14W"
         #   Legacy:  "Package Power: X W"
         # Sonoma combines CPU+GT+SA into one number; legacy had separate IA / GT lines.
@@ -222,7 +222,7 @@ if not power_w:
     power_w = [s["intel_package_power_mw"] / 1000.0
                for s in samples if "intel_package_power_mw" in s]
 
-# Ambient / chassis temps — collect the FIRST sample's reading (closest to
+# Ambient / chassis temps, collect the FIRST sample's reading (closest to
 # pre-load conditions) and the maximum during the run.
 ambient_first = None
 ambient_max = None
@@ -236,7 +236,7 @@ for i, s in enumerate(samples):
     if ambient_max is None or val > ambient_max:
         ambient_max = val
 
-# Frequency cliffs — split into "early" (first 30 s) and "post-warmup" (after 90 s).
+# Frequency cliffs, split into "early" (first 30 s) and "post-warmup" (after 90 s).
 # The textbook bad-batch signature is a cliff to base clock within 30 s under load,
 # which the previous version's 90 s warmup-skip threw away.
 #
@@ -272,7 +272,7 @@ if p_freqs:
     if tail and peak:
         steady_vs_peak = round(sum(tail) / len(tail) / peak * 100, 2)
 
-# Data quality — flagged BEFORE the verdict so a no-samples run can't false-pass.
+# Data quality, flagged BEFORE the verdict so a no-samples run can't false-pass.
 expected_min_samples = max(1, int(duration / sample / 2))
 data_quality = "ok"
 data_quality_notes = []
@@ -289,12 +289,12 @@ elif len(samples) < expected_min_samples:
     )
 if not p_freqs and data_quality == "ok":
     data_quality = "few_samples"
-    data_quality_notes.append("no CPU frequency data — powermetrics format may have changed")
+    data_quality_notes.append("no CPU frequency data, powermetrics format may have changed")
 # Sanity: if powermetrics returned samples but the key metrics are entirely
 # absent (likely a macOS-version format change), surface it loudly.
 if samples and not cpu_temps:
     data_quality_notes.append(
-        "no CPU die temperature data captured — powermetrics output format may "
+        "no CPU die temperature data captured, powermetrics output format may "
         "have changed in this macOS version; the temp-based verdict checks were skipped"
     )
     if data_quality == "ok":
@@ -323,7 +323,7 @@ THRESHOLDS = {
         "early_cliff_warn": 15, "early_cliff_fail": 25,
         "expect_fan_ramp": True,
     },
-    # Intel laptops throttle hard by design — looser steady-state and cliff
+    # Intel laptops throttle hard by design, looser steady-state and cliff
     # thresholds. Tjmax is typically 100°C and Intel throttles aggressively
     # well before that.
     "intel-laptop": {
@@ -341,13 +341,30 @@ THRESHOLDS = {
         "expect_fan_ramp": True,
     },
 }
+
+# 14" vs 16" MacBook Pro split (roadmap). The 14" M5 Max throttles by design
+# under sustained Pro-class load (smaller fan and thermal mass), so it gets
+# looser steady-state and cliff bands; an otherwise-healthy 14" lands in the
+# 16" warn band. "active-cooled-pro-16" aliases the strict table above, and the
+# legacy "active-cooled-pro" keeps that same strict table so existing presets
+# and submissions stay comparable. Auto-detect cannot tell 14" from 16"
+# (system_profiler does not expose screen size on Apple Silicon), so the precise
+# sub-class only arrives via a --target preset.
+THRESHOLDS["active-cooled-pro-16"] = THRESHOLDS["active-cooled-pro"]
+THRESHOLDS["active-cooled-pro-14"] = {
+    "cpu_temp_warn": 100, "cpu_temp_fail": 105,
+    "steady_warn":   60,  "steady_fail":   50,
+    "cliff_warn":    30,  "cliff_fail":    40,
+    "early_cliff_warn": 35, "early_cliff_fail": 50,
+    "expect_fan_ramp": True,
+}
 T = THRESHOLDS[chassis]
 
 fail_signals = []
 warn_signals = []
 
 if data_quality == "no_samples":
-    fail_signals.append("no powermetrics samples captured — verdict cannot be trusted")
+    fail_signals.append("no powermetrics samples captured, verdict cannot be trusted")
     fail_signals.extend(data_quality_notes)
 else:
     # CPU temp
@@ -356,11 +373,11 @@ else:
     elif cpu_temps and max(cpu_temps) > T["cpu_temp_warn"]:
         warn_signals.append(f"max CPU temp {max(cpu_temps):.1f}°C in warn range ({chassis})")
 
-    # Early cliff (first 30 s) — the textbook bad-batch signature
+    # Early cliff (first 30 s), the textbook bad-batch signature
     if early_cliff_pct is not None and early_cliff_pct > T["early_cliff_fail"]:
         fail_signals.append(
             f"early-window frequency cliff {early_cliff_pct:.1f}% > {T['early_cliff_fail']}% "
-            f"({chassis}) — textbook bad-batch signature"
+            f"({chassis}), textbook bad-batch signature"
         )
     elif early_cliff_pct is not None and early_cliff_pct > T["early_cliff_warn"]:
         warn_signals.append(
@@ -381,29 +398,29 @@ else:
 
     # Fan ramp (skip for fanless).
     # On desktop, "fan doesn't engage" is documented as fail (not warn).
-    # No-fan-data is an info note, not a warn — clamshell mode, USB-only mini,
+    # No-fan-data is an info note, not a warn, clamshell mode, USB-only mini,
     # and macOS-version-specific powermetrics quirks all produce empty fan_avgs
     # without indicating a defect.
     if T["expect_fan_ramp"]:
         if not fan_avgs:
             data_quality_notes.append(
-                "no fan data captured by powermetrics (clamshell / sampler quirk?) — "
+                "no fan data captured by powermetrics (clamshell / sampler quirk?), "
                 "verify fan engagement manually"
             )
         elif min(fan_avgs) > 3000:
-            # Cooling was engaged throughout the run — high absolute RPM from the
+            # Cooling was engaged throughout the run, high absolute RPM from the
             # start means the chassis was heat-soaked from the preceding variance
             # phase, or the user has fan curves manually set high. Either way the
             # "didn't ramp" check (max-min < 200) would false-positive.
             data_quality_notes.append(
-                f"fans pinned high throughout (min {min(fan_avgs):.0f} RPM) — "
+                f"fans pinned high throughout (min {min(fan_avgs):.0f} RPM), "
                 f"ramp check skipped, cooling clearly engaged"
             )
         elif max(fan_avgs) - min(fan_avgs) < 200:
             if chassis == "desktop":
                 fail_signals.append(
                     f"fan RPM did not ramp under load (max-min < 200 RPM) "
-                    f"on {chassis} chassis — fan likely not engaging"
+                    f"on {chassis} chassis, fan likely not engaging"
                 )
             else:
                 warn_signals.append("fan RPM did not appreciably ramp under load")
@@ -418,7 +435,7 @@ if fail_signals:
 elif len(warn_signals) >= 3:
     verdict = "fail"
     fail_signals.append(
-        f"compound warning ({len(warn_signals)} independent warn signals) — escalated to fail"
+        f"compound warning ({len(warn_signals)} independent warn signals), escalated to fail"
     )
 elif warn_signals:
     verdict = "warn"

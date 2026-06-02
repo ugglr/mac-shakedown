@@ -16,7 +16,7 @@ Shakedown is the procedure for catching those.
 
 > **Status (v0.1):** the methodology has not yet been validated against a confirmed-defective unit. Thresholds are derived from public reports and engineering reasoning. Expect them to tighten as crowd-sourced submissions land. Treat current results as advisory, not authoritative; if a verdict is borderline, rerun before deciding.
 >
-> Phase 4 uses parallel SHA-256, which is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. The variance methodology transfers cleanly to any sustained workload (the SHA choice is for zero-install portability), but the test doesn't probe integer pipelines or memory bandwidth as deeply as Cinebench / Geekbench would. A non-accelerated workload pass is on the [roadmap](#roadmap).
+> Phase 4 uses parallel SHA-256, which is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. The variance methodology transfers cleanly to any sustained workload (the SHA choice is for zero-install portability), but the test doesn't probe integer pipelines or memory bandwidth as deeply as Cinebench / Geekbench would. A non-accelerated workload pass now ships as opt-in Phase 4b (`./run --noaccel`, BLAKE2b), and memory bandwidth has its own phase (Phase 12).
 
 ## Quick start
 
@@ -39,7 +39,7 @@ Or without a preset, which auto-detects chassis class from `system_profiler` (fi
 ./run
 ```
 
-The orchestrator runs the six automated phases (preflight → inventory → battery → race benchmark → SSD test → CPU variance → thermal load), asks for sudo once upfront (Phase 5 and the SSD page-cache drop need it), and writes a SCHEMA-compliant report to `Reports/local/` plus a sanitized PR-able copy to `Reports/submissions/`. Runtime ~20 min on Intel, ~27 min on Air, ~47 min on MacBook Pro.
+The orchestrator runs the automated phases (preflight → inventory → battery → race benchmark → SSD test → memory bandwidth → CPU variance → thermal load) end-to-end, asks for sudo once upfront (Phase 5 and the SSD page-cache drop need it), and writes a SCHEMA-compliant report to `Reports/local/` plus a sanitized PR-able copy to `Reports/submissions/`. Two heavier passes are opt-in: `--noaccel` adds a non-accelerated (BLAKE2b) variance pass, and `--gpu` adds a Metal GPU compute pass. Runtime ~20 min on Intel, ~27 min on Air, ~47 min on MacBook Pro (add ~6 min for `--noaccel`).
 
 `./run --no-sudo` skips the 10-min thermal phase (the only phase that needs sudo) for a half-runtime no-password variance-only pass.
 
@@ -61,14 +61,17 @@ See [`examples/sample-report-illustrative/`](examples/sample-report-illustrative
 | 3 | Sensor & port inventory | (uses Phase 1 output) |
 | 10 | Race benchmark (cold) | `xz -9 -T<P>` of a 200 MB random blob → `race-bench.sh` |
 | 11 | SSD sequential read/write (cold) | 2 GB incompressible random data, page cache dropped between → `ssd-test.sh` |
+| 12 | Memory bandwidth (cold) | multi-threaded `memmove` over cache-busting buffers → `memory-bandwidth.sh` |
 | 4 | **CPU performance variance** | 5 s burst + chassis-class-aware warmup (300 s on Pro, 60 s on Air) + 5 × 60 s timed iterations, parallel SHA-256 → `cpu-variance.sh` |
+| 4b | Non-accelerated CPU variance (opt-in `--noaccel`) | same methodology with BLAKE2b (no crypto instruction, hits the integer pipelines) → `cpu-variance.sh` |
 | 5 | Sustained thermal load (chassis-class-aware thresholds) | 10 min continuous + `powermetrics` sampling → `thermal-load.sh` |
+| 13 | GPU compute variance (opt-in `--gpu`) | sustained Metal FMA load, compiled with `swiftc` at runtime → `gpu-variance.sh` |
 | 6 | Display visual inspection | fullscreen color cycle in Safari → `display-test.sh` |
 | 7 | Manual physical inspection | hinge, keyboard, speakers, ports, Touch ID, etc. (runbook checklist) |
 | 8 | Apple Diagnostics | reboot + Cmd-D |
 | 9 | Optional idle drain | 30 min sleep, measure %/30 min |
 
-Phases 10 (race) and 11 (SSD) run before the heavy phases so the chassis is cold. They produce calibration numbers (verdict `"info"`); pass/fail thresholds land in schema v0.3 once the submission corpus is non-empty. Unlike Phase 4 (SHA-256, hardware-accelerated), Phase 10 (LZMA) is fair across chassis families since it doesn't hit any crypto coprocessor.
+Phases 10 (race), 11 (SSD), and 12 (memory bandwidth) run before the heavy phases so the chassis is cold. They produce calibration numbers (verdict `"info"`); pass/fail thresholds land in schema v0.3 once the submission corpus is non-empty (Phase 11 carries a conservative warn-only floor in the meantime). Unlike Phase 4 (SHA-256, hardware-accelerated), Phase 10 (LZMA) is fair across chassis families since it doesn't hit any crypto coprocessor.
 
 ## Specifying your target
 
@@ -117,8 +120,10 @@ mac-shakedown/
 │       ├── battery.sh              # ioreg battery health → JSON
 │       ├── race-bench.sh           # cold xz race → JSON
 │       ├── ssd-test.sh             # sequential SSD read/write → JSON (sudo for purge)
-│       ├── cpu-variance.sh         # burst + warmup + 5×60s timed iters → JSON
+│       ├── memory-bandwidth.sh     # multi-threaded memmove bandwidth → JSON
+│       ├── cpu-variance.sh         # burst + warmup + 5×60s timed iters → JSON (WORKLOAD=blake2b for 4b)
 │       ├── thermal-load.sh         # 10-min sustained + powermetrics → JSON (sudo)
+│       ├── gpu-variance.sh         # opt-in Metal compute variance, swiftc at runtime → JSON
 │       └── display-test.sh         # fullscreen color cycle (HTML)
 ├── targets/                        # preset SKU configs
 │   ├── README.md
@@ -145,10 +150,10 @@ When a new chip line ships, copy `examples/m5-2026/` to `examples/<generation>-<
 
 ## Running individual scripts (advanced)
 
-`./run` orchestrates the five script-driven phases. If you want to rerun a single phase, say to confirm a borderline variance warn without redoing the whole 18-min pass, call the scripts directly:
+`./run` orchestrates the script-driven phases. If you want to rerun a single phase, say to confirm a borderline variance warn without redoing the whole pass, call the scripts directly:
 
 ```bash
-export CHASSIS_CLASS=active-cooled-pro    # or fanless | desktop | intel-laptop | intel-desktop
+export CHASSIS_CLASS=active-cooled-pro-16  # or -14 | fanless | desktop | intel-laptop | intel-desktop
 
 ./Verification/scripts/inventory.sh    > Reports/inventory.json
 ./Verification/scripts/battery.sh      > Reports/battery.json
@@ -173,14 +178,14 @@ The manual phases (display, physical inspection, Apple Diagnostics, idle drain) 
 
 ## Roadmap
 
+Wave 7 shipped most of the original roadmap: the non-accelerated variance pass (Phase 4b, BLAKE2b), GPU compute variance (Phase 13, Metal), memory bandwidth (Phase 12), a conservative SSD floor, the `active-cooled-pro-14` / `active-cooled-pro-16` thermal sub-classes, and M1-M4 plus Intel-era generation calibrations.
+
+Still open:
+
 - **Hosted aggregator.** Eventually, submission via API to a public site so reports aren't reviewed by hand. Until then, the PR-submission flow above *is* the aggregator. Slower, but no infra, and PR review catches PII before merge.
-- **Non-accelerated workload pass.** Optional Phase 4b that runs a workload without hardware acceleration (e.g. unaccelerated AES, BLAKE2b in pure Python, or a pinned matrix-multiply kernel) so the test stresses integer pipelines and memory bandwidth too. Catches batch defects that don't show up under SHA-NI / Apple Silicon's crypto engines.
-- **GPU variance test.** Currently CPU-only. M5 Max GPU is the bigger thermal contributor and a Metal compute load would be much more aggressive than CPU SHA-256.
-- **NVMe SSD performance thresholds.** Wave 6 added sequential read/write measurement (Phase 11). Numbers are informational in v0.2; chassis-family pass/fail thresholds land in v0.3 once the submission corpus has baselines. Apple has shipped 256 GB single-die SSD perf regressions on past gens, worth catching.
-- **Memory bandwidth.** STREAM-style benchmark.
-- **Per-core pinning.** macOS lacks public CPU affinity APIs, so we can't pin workers to specific cores. A defective single core gets averaged out across N P-cores. Reporting `worker_imbalance_pct_per_iter` is a partial mitigation; investigating workarounds (ASIA-style fence, pthread_qos hints) is on the list.
-- **More generation calibrations.** Apple Silicon M1–M4 (the scripts work today; only the calibration notes and target presets need filling), Intel-era issues (T2 chip, butterfly keyboards 2018–19, GPU stutter 2019).
-- **14" vs 16" thermal sub-classes.** The 14" M5 Max is documented to throttle by design under sustained Pro-class thresholds. Split off `active-cooled-pro-14` and `active-cooled-pro-16` once we have data points to set the looser-but-not-too-loose thresholds.
+- **Calibrated v0.3 thresholds.** The race / SSD / memory-bandwidth / GPU phases are informational in v0.2. Once the submission corpus has per-SKU baselines, they get chassis-family pass/fail bands. The SSD floor is the only band today, and it's a conservative sanity floor (flags below 500 MB/s with the cache dropped), not a calibrated range.
+- **Per-core pinning.** macOS lacks public CPU affinity APIs, so we can't pin workers to specific cores; a defective single core gets averaged across N P-cores. Reporting `worker_imbalance_pct_per_iter` is the partial mitigation. The investigation is written up in [`Verification/per-core-pinning.md`](Verification/per-core-pinning.md): the short version is that `THREAD_AFFINITY_POLICY` is ignored on Apple Silicon and QoS hints only steer between the P and E clusters, so there's no per-core pinning to be had today.
+- **Full STREAM triad.** Phase 12 measures copy bandwidth via `memmove` (a lower bound on the memory subsystem). Scale / add / triad need a native kernel, which would break the pure-stdlib property of the default run.
 
 ## Origin
 

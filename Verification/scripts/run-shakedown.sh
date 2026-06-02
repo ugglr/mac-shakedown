@@ -1,16 +1,16 @@
 #!/bin/bash
-# run-shakedown.sh — orchestrator: runs the auto-runnable phases end-to-end and
+# run-shakedown.sh: orchestrator: runs the auto-runnable phases end-to-end and
 # writes two JSON reports: a full local copy and a sanitized submission copy.
 #
 # Usage:
 #   ./Verification/scripts/run-shakedown.sh --target mbp-16-m5-max-64
 #
 # Writes:
-#   Reports/local/<filename>.json       — full output, gitignored (keeps _raw_* fields)
-#   Reports/submissions/<filename>.json — sanitized, committable as a PR
+#   Reports/local/<filename>.json      , full output, gitignored (keeps _raw_* fields)
+#   Reports/submissions/<filename>.json, sanitized, committable as a PR
 #
 # Phases 6 (display), 7 (physical), 8 (Apple Diagnostics), 9 (idle drain) emit
-# `verdict: "skipped"` placeholders — friend hand-edits the local copy if they
+# `verdict: "skipped"` placeholders, friend hand-edits the local copy if they
 # ran any of those, then re-runs the sanitize step or copies the result.
 
 set -euo pipefail
@@ -21,6 +21,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TARGET=""
 NOTES=""
 NO_SUDO=0
+RUN_NOACCEL=0
+RUN_GPU=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,17 +38,31 @@ while [[ $# -gt 0 ]]; do
       NO_SUDO=1
       shift
       ;;
+    --noaccel)
+      RUN_NOACCEL=1
+      shift
+      ;;
+    --gpu)
+      RUN_GPU=1
+      shift
+      ;;
     -h|--help)
       cat <<HELP
-Usage: $(basename "$0") [--target <preset>] [--no-sudo] [--notes "free-form notes"]
+Usage: $(basename "$0") [--target <preset>] [--no-sudo] [--noaccel] [--gpu] [--notes "free-form notes"]
 
   --target <preset>   optional. Target preset name (file under targets/ without .json)
                       e.g. mbp-16-m5-max-64, macbook-air-m5-16, mbp-16-intel-2019.
-                      Without a target, inventory asserts are skipped — useful for
-                      Macs that don't yet have a preset.
-  --no-sudo           skip Phase 5 (sustained thermal load) — that's the only phase
-                      that needs sudo. Phase 4 (variance) still runs and is the
-                      headline test. Alias: --skip-thermal.
+                      Without a target, inventory asserts are skipped (useful for
+                      Macs that don't yet have a preset).
+  --no-sudo           skip Phase 5 (sustained thermal load), the only phase that
+                      needs sudo. Phase 4 (variance) still runs and is the headline
+                      test. Alias: --skip-thermal.
+  --noaccel           also run Phase 4b: a second variance pass on a non-accelerated
+                      workload (BLAKE2b) that stresses the integer pipelines SHA-NI
+                      hides. Opt-in because it adds a second sustained pass.
+  --gpu               also run Phase 13: a Metal GPU compute variance pass. Compiles
+                      a small Metal kernel with swiftc at runtime; skips cleanly if
+                      swiftc or a Metal device is unavailable.
   --notes "..."       optional free-form note to embed in the report. Setting any
                       note flips submission_safe to false (notes may contain PII).
 
@@ -78,7 +94,7 @@ print(d.get("thermal_chassis_class", "active-cooled-pro"))
 PYEOF
 )
 elif [[ -z "${CHASSIS_CLASS:-}" ]]; then
-  # No target and no override — auto-detect chassis from machine_name.
+  # No target and no override, auto-detect chassis from machine_name.
   # Mac Pro (Intel desktop) and MacBook Pro both contain "Pro"; check for
   # the MacBook prefix first so Mac Pro doesn't get misclassified as a laptop.
   CHASSIS_CLASS=$(python3 <<'PYEOF'
@@ -96,6 +112,10 @@ except Exception:
 model = hw.get("machine_name") or ""
 is_apple_silicon = bool(hw.get("chip_type"))
 is_laptop = "MacBook" in model
+# Auto-detect cannot tell a 14" from a 16" MacBook Pro (system_profiler does not
+# expose screen size on Apple Silicon), so it returns the generic active-cooled-pro
+# (16"-equivalent, strict). Pass --target mbp-14-... for the looser
+# active-cooled-pro-14 bands on a 14" that throttles by design.
 if is_apple_silicon:
     print("fanless" if (is_laptop and "Air" in model) else
           "active-cooled-pro" if is_laptop else "desktop")
@@ -112,7 +132,7 @@ fi
 export CHASSIS_CLASS
 
 ignite() {
-  # Build-up flame animation before a phase. ~700 ms total — short enough that
+  # Build-up flame animation before a phase. ~700 ms total, short enough that
   # it doesn't pad the run, long enough to give the eye a transition. Falls
   # back to a plain echo when stderr isn't a TTY (CI, piped logs).
   if [[ ! -t 2 ]]; then
@@ -210,15 +230,14 @@ else
 fi
 
 if [[ -z "${SHAKEDOWN_YES:-}" ]]; then
-  if [[ "$NO_SUDO" -eq 1 ]]; then
-    duration_hint="~10 min total: race + SSD benchmarks (~1.5 min) plus Phase 4 variance (~8 min)"
-  else
-    duration_hint="~20 min total: race + SSD benchmarks (~1.5 min) plus Phase 4 variance (~8 min) plus Phase 5 thermal (~10 min)"
-  fi
+  duration_hint="race + SSD + memory benchmarks (~2 min), then Phase 4 variance (~8 min)"
+  if [[ "$NO_SUDO" -ne 1 ]]; then duration_hint="$duration_hint, Phase 5 thermal (~10 min)"; fi
+  if [[ "$RUN_NOACCEL" -eq 1 ]]; then duration_hint="$duration_hint, Phase 4b non-accelerated variance (~6 min)"; fi
+  if [[ "$RUN_GPU" -eq 1 ]]; then duration_hint="$duration_hint, Phase 13 GPU compute (~1 min)"; fi
   cat <<INFO >&2
 
 About to run $duration_hint. Fans will spin up loud and the chassis will get
-hot. macOS throttles to protect the chip, so nothing dangerous — but expect a
+hot. macOS throttles to protect the chip, so nothing dangerous, but expect a
 noisy run.
 
 Set SHAKEDOWN_YES=1 to skip this prompt (e.g. for scripted runs).
@@ -236,7 +255,7 @@ if [[ "$NO_SUDO" -ne 1 ]]; then
   sudo -v
   # Background keep-alive: refresh sudo credentials every 60s while the
   # orchestrator is alive. macOS default sudo timestamp is 5 min, and Phase 4
-  # on Intel takes ~8 min — without this, the user gets a second password
+  # on Intel takes ~8 min, without this, the user gets a second password
   # prompt mid-run.
   ( while true; do
       sleep 60
@@ -255,10 +274,13 @@ INVENTORY_JSON="$WORK/inventory.json"
 BATTERY_JSON="$WORK/battery.json"
 RACE_JSON="$WORK/race.json"
 SSD_JSON="$WORK/ssd.json"
+MEMBW_JSON="$WORK/membw.json"
 VARIANCE_JSON="$WORK/variance.json"
+NOACCEL_JSON="$WORK/noaccel.json"
 THERMAL_JSON="$WORK/thermal.json"
+GPU_JSON="$WORK/gpu.json"
 
-ignite "Phase 0 — preflight"
+ignite "Phase 0: preflight"
 {
   echo "=== uptime ==="
   uptime
@@ -270,41 +292,70 @@ ignite "Phase 0 — preflight"
   networksetup -getairportpower en0 2>/dev/null || echo "(no en0)"
 } > "$PREFLIGHT_TXT" 2>&1
 
-ignite "Phase 1 — inventory"
+ignite "Phase 1: inventory"
 "$SCRIPT_DIR/inventory.sh" > "$INVENTORY_JSON"
 
-ignite "Phase 2 — battery"
+ignite "Phase 2: battery"
 "$SCRIPT_DIR/battery.sh" > "$BATTERY_JSON"
 
 # Run race + SSD benchmarks while the chassis is still cold. Cold race captures
 # peak boost throughput unobscured by thermal saturation. SSD numbers are
 # similarly cleaner before NVMe controllers warm up under chassis heat soak.
-ignite "Phase 10 — race benchmark (xz compression, ~30-60s)"
+ignite "Phase 10: race benchmark (xz compression, ~30-60s)"
 "$SCRIPT_DIR/race-bench.sh" > "$RACE_JSON"
 
-ignite "Phase 11 — SSD sequential read/write (~30s)"
+ignite "Phase 11: SSD sequential read/write (~30s)"
 if [[ "$NO_SUDO" -eq 1 ]]; then
   ALLOW_NO_PURGE=1 "$SCRIPT_DIR/ssd-test.sh" > "$SSD_JSON"
 else
   "$SCRIPT_DIR/ssd-test.sh" > "$SSD_JSON"
 fi
 
-ignite "Phase 4 — CPU variance (~6-10 min depending on chassis)"
+ignite "Phase 12: memory bandwidth (~15s)"
+"$SCRIPT_DIR/memory-bandwidth.sh" > "$MEMBW_JSON"
+
+ignite "Phase 4: CPU variance (~6-10 min depending on chassis)"
 start_heartbeat
 "$SCRIPT_DIR/cpu-variance.sh" > "$VARIANCE_JSON"
 stop_heartbeat
 
+if [[ "$RUN_NOACCEL" -eq 1 ]]; then
+  ignite "Phase 4b: non-accelerated CPU variance (BLAKE2b, ~6 min)"
+  start_heartbeat
+  # Chassis is already hot from Phase 4, so a short re-warm is enough and we skip
+  # the cold burst. Same script, non-accelerated workload.
+  BURST_SEC=0 WARMUP_SEC="${NOACCEL_WARMUP_SEC:-60}" WORKLOAD=blake2b "$SCRIPT_DIR/cpu-variance.sh" > "$NOACCEL_JSON"
+  stop_heartbeat
+else
+  ignite "Phase 4b: skipped (opt-in; pass --noaccel)"
+  cat > "$NOACCEL_JSON" <<EOF
+{"verdict":"skipped","verdict_reasons":["opt-in phase; pass --noaccel for a non-accelerated BLAKE2b variance pass"],"workload":"blake2b-parallel (non-accelerated)","data_quality":"skipped"}
+EOF
+fi
+
 if [[ "$NO_SUDO" -eq 1 ]]; then
-  ignite "Phase 5 — skipped (--no-sudo)"
+  ignite "Phase 5: skipped (--no-sudo)"
   cat > "$THERMAL_JSON" <<EOF
 {"verdict":"skipped","verdict_reasons":["--no-sudo: thermal phase needs powermetrics + sudo"],"chassis_class":"$CHASSIS_CLASS","duration_s":0,"data_quality":"skipped"}
 EOF
 else
-  ignite "Phase 5 — sustained thermal load (~10 min, needs sudo)"
+  ignite "Phase 5: sustained thermal load (~10 min, needs sudo)"
   start_heartbeat
   # shellcheck disable=SC2024  # the redirect target is a user-owned tempdir, not privileged.
   sudo CHASSIS_CLASS="$CHASSIS_CLASS" "$SCRIPT_DIR/thermal-load.sh" > "$THERMAL_JSON"
   stop_heartbeat
+fi
+
+if [[ "$RUN_GPU" -eq 1 ]]; then
+  ignite "Phase 13: GPU variance (Metal compute, opt-in)"
+  start_heartbeat
+  "$SCRIPT_DIR/gpu-variance.sh" > "$GPU_JSON"
+  stop_heartbeat
+else
+  ignite "Phase 13: skipped (opt-in; pass --gpu)"
+  cat > "$GPU_JSON" <<EOF
+{"verdict":"skipped","verdict_reasons":["opt-in phase; pass --gpu to compile and run a Metal GPU compute variance pass"],"workload":"metal-compute","data_quality":"skipped"}
+EOF
 fi
 
 echo "shakedown: aggregating into canonical report"
@@ -318,8 +369,11 @@ python3 - \
   "$BATTERY_JSON" \
   "$RACE_JSON" \
   "$SSD_JSON" \
+  "$MEMBW_JSON" \
   "$VARIANCE_JSON" \
+  "$NOACCEL_JSON" \
   "$THERMAL_JSON" \
+  "$GPU_JSON" \
   "$REPO_ROOT/Reports/local" \
   "$REPO_ROOT/Reports/submissions" \
   "$TARGET" \
@@ -333,11 +387,11 @@ import re
 import sys
 
 (target_file, preflight_txt, inv_path, bat_path, race_path, ssd_path,
- var_path, thr_path,
- local_dir, submissions_dir, target_name, notes) = sys.argv[1:13]
+ membw_path, var_path, noaccel_path, thr_path, gpu_path,
+ local_dir, submissions_dir, target_name, notes) = sys.argv[1:16]
 
 SHAKEDOWN_VERSION = "0.1.0"
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 def load(path):
     with open(path) as f:
@@ -348,8 +402,11 @@ inventory = load(inv_path)
 battery = load(bat_path)
 race = load(race_path)
 ssd = load(ssd_path)
+membw = load(membw_path)
 variance = load(var_path)
+noaccel = load(noaccel_path)
 thermal = load(thr_path)
+gpu = load(gpu_path)
 
 inv_summary = inventory.get("summary", {})
 
@@ -376,16 +433,16 @@ n_perf = inv_summary.get("perf_cores") or 0
 if load_avg_1m is not None and n_perf and load_avg_1m > n_perf * 0.5:
     preflight_verdict = "warn"
     preflight_reasons.append(
-        f"1m load avg {load_avg_1m:.2f} above half perf-core count ({n_perf}) — "
+        f"1m load avg {load_avg_1m:.2f} above half perf-core count ({n_perf}), "
         f"close background apps before trusting variance numbers"
     )
 if not ac_power:
     preflight_verdict = "warn"
-    preflight_reasons.append("not on AC power — sustained-perf tests assume AC")
+    preflight_reasons.append("not on AC power, sustained-perf tests assume AC")
 
 chip = inv_summary.get("chip") or ""
 mem_gb = inv_summary.get("memory_gb")
-# Search across model + model_identifier — the size suffix shows up in either
+# Search across model + model_identifier, the size suffix shows up in either
 # field depending on generation (Intel "MacBookPro16,1" vs Apple Silicon "Mac17,1").
 model_haystack = " ".join(filter(None, [inv_summary.get("model"), inv_summary.get("model_identifier")]))
 
@@ -417,12 +474,12 @@ if target:
         if inv_verdict == "pass":
             inv_verdict = "warn"
         inv_reasons.append(
-            f"model '{model_haystack}' does not include target substring '{target.get('model_must_include')}' "
-            f"— system_profiler does not reliably expose screen size on Apple Silicon; verify manually"
+            f"model '{model_haystack}' does not include target substring '{target.get('model_must_include')}'. "
+            f"system_profiler does not reliably expose screen size on Apple Silicon; verify manually"
         )
 else:
     inv_asserts = {"ran_without_target": True, "ssd_smart": ssd_smart}
-    inv_reasons.append("no target preset specified — recorded actual values without asserting")
+    inv_reasons.append("no target preset specified, recorded actual values without asserting")
 
 if ssd_smart and ssd_smart != "Verified":
     inv_verdict = "fail"
@@ -440,7 +497,7 @@ bat_reasons = []
 if target:
     if isinstance(cycle, int) and cycle > 5:
         bat_verdict = "fail"
-        bat_reasons.append(f"cycle_count {cycle} > 5 — likely a returned/refurb unit, not new-from-factory")
+        bat_reasons.append(f"cycle_count {cycle} > 5, likely a returned/refurb unit, not new-from-factory")
     elif isinstance(cycle, int) and cycle > 1:
         bat_verdict = "warn"
         bat_reasons.append(f"cycle_count {cycle} above the typical factory range (0–1)")
@@ -448,7 +505,7 @@ if target:
         bat_verdict = "warn"
         bat_reasons.append(f"max_capacity_pct {max_pct}% below the 99% expected on a new unit")
 elif isinstance(cycle, int):
-    bat_reasons.append(f"cycle_count {cycle} (informational — no target, factory-fresh check skipped)")
+    bat_reasons.append(f"cycle_count {cycle} (informational, no target, factory-fresh check skipped)")
 if isinstance(max_pct, (int, float)) and max_pct < 95:
     bat_verdict = "fail"
     bat_reasons.append(f"max_capacity_pct {max_pct}% < 95%")
@@ -502,7 +559,7 @@ thermal_reasons = thermal.get("verdict_reasons") or []
 thermal_details = {k: v for k, v in thermal.items() if k not in ("verdict", "verdict_reasons", "raw_log_path")}
 
 # Race + SSD benchmarks default to "info" verdict in v0.2 (no pass/fail
-# thresholds yet — they're calibration inputs). "info" is treated as not-failing
+# thresholds yet, they're calibration inputs). "info" is treated as not-failing
 # and not-warning in the overall result computation below.
 race_verdict = race.get("verdict", "info")
 race_reasons = race.get("verdict_reasons") or []
@@ -512,11 +569,26 @@ ssd_verdict = ssd.get("verdict", "info")
 ssd_reasons = ssd.get("verdict_reasons") or []
 ssd_details = {k: v for k, v in ssd.items() if k not in ("verdict", "verdict_reasons")}
 
+membw_verdict = membw.get("verdict", "info")
+membw_reasons = membw.get("verdict_reasons") or []
+membw_details = {k: v for k, v in membw.items() if k not in ("verdict", "verdict_reasons")}
+
+# Phase 4b (non-accelerated variance) is a real pass/warn/fail variance pass when
+# it runs; without --noaccel it is a skipped stub. Default to a non-failing
+# verdict if the field is somehow absent, since the phase is opt-in.
+noaccel_verdict = noaccel.get("verdict", "info")
+noaccel_reasons = noaccel.get("verdict_reasons") or []
+noaccel_details = {k: v for k, v in noaccel.items() if k not in ("verdict", "verdict_reasons")}
+
+gpu_verdict = gpu.get("verdict", "info")
+gpu_reasons = gpu.get("verdict_reasons") or []
+gpu_details = {k: v for k, v in gpu.items() if k not in ("verdict", "verdict_reasons")}
+
 skipped_phases = {
     "6_display": "run ./Verification/scripts/display-test.sh and fill in manual_responses",
     "7_physical": "follow Runbook Phase 7 manual checklist",
     "8_apple_diagnostics": "reboot into Diagnostics (Cmd-D from startup options); record code",
-    "9_idle_drain": "optional — see Runbook Phase 9",
+    "9_idle_drain": "optional, see Runbook Phase 9",
 }
 
 def phase_block(verdict, duration_s, details, reasons):
@@ -568,8 +640,11 @@ phases = {
     "3_sensors": phase_block(sensors_verdict, 1, {"expected_present": present, "missing": missing}, sensors_reasons),
     "10_race_bench": phase_block(race_verdict, int(race_details.get("wall_seconds") or 0), race_details, race_reasons),
     "11_ssd_test": phase_block(ssd_verdict, int((ssd_details.get("write_seconds") or 0) + (ssd_details.get("read_seconds") or 0)), ssd_details, ssd_reasons),
+    "12_memory_bandwidth": phase_block(membw_verdict, int(membw_details.get("wall_seconds") or 0), membw_details, membw_reasons),
     "4_cpu_variance": phase_block(variance_verdict, variance_details.get("warmup_sec", 0) + variance_details.get("iterations", 0) * variance_details.get("seconds_per_iter", 0) + variance_details.get("burst_sec", 0), variance_details, variance_reasons),
+    "4b_cpu_variance_noaccel": phase_block(noaccel_verdict, noaccel_details.get("warmup_sec", 0) + noaccel_details.get("iterations", 0) * noaccel_details.get("seconds_per_iter", 0) + noaccel_details.get("burst_sec", 0), noaccel_details, noaccel_reasons),
     "5_thermal_load": phase_block(thermal_verdict, thermal_details.get("duration_s", 600), thermal_details, thermal_reasons),
+    "13_gpu_variance": phase_block(gpu_verdict, int(gpu_details.get("wall_seconds") or 0), gpu_details, gpu_reasons),
 }
 for name, hint in skipped_phases.items():
     phases[name] = phase_block("skipped", 0, {"note": hint}, ["not run by orchestrator"])
@@ -594,7 +669,7 @@ else:
     target_block = {
         "preset": None,
         "thermal_chassis_class": variance.get("chassis_class"),
-        "note": "ran without --target — inventory asserts skipped",
+        "note": "ran without --target, inventory asserts skipped",
     }
 
 report_full = {

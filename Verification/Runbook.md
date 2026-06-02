@@ -5,7 +5,7 @@ tags: [verification, runbook]
 
 # QA Runbook
 
-The procedure for each verification phase. Phases 0–5 are automated by [`./run`](../README.md#quick-start); phases 6–9 are manual checks you step through yourself. Each phase has a goal, an action, and a pass condition. See [Pass-Fail Criteria](Pass-Fail%20Criteria.md) for the consolidated thresholds and [the JSON report schema](../Reports/SCHEMA.md) for the canonical output format.
+The procedure for each verification phase. The automated phases (0–5, the cold benchmarks 10–12, and the opt-in 4b / 13) are run by [`./run`](../README.md#quick-start); phases 6–9 are manual checks you step through yourself. Each phase has a goal, an action, and a pass condition. See [Pass-Fail Criteria](Pass-Fail%20Criteria.md) for the consolidated thresholds and [the JSON report schema](../Reports/SCHEMA.md) for the canonical output format.
 
 **Total time:** ~45 min on a MacBook Pro, ~25 min on a fanless Air, ~35 min on a desktop or Intel Mac, +30 min if you opt into the idle-drain test.
 
@@ -98,7 +98,7 @@ CHASSIS_CLASS=active-cooled-pro \
   ./Verification/scripts/cpu-variance.sh > Reports/<ts>-raw/variance.json
 ```
 
-`CHASSIS_CLASS` defaults to `active-cooled-pro`. Valid values: `fanless` (Apple Silicon Air), `active-cooled-pro` (Apple Silicon MBP), `desktop` (Apple Silicon mini / Studio / iMac), `intel-laptop`, `intel-desktop`.
+`CHASSIS_CLASS` defaults to `active-cooled-pro`. Valid values: `fanless` (Apple Silicon Air), `active-cooled-pro` (Apple Silicon MBP; `-16` is the strict default, `-14` sets looser bands for the design-throttling 14"), `desktop` (Apple Silicon mini / Studio / iMac), `intel-laptop`, `intel-desktop`.
 
 The test has three phases internal to the script:
 
@@ -114,7 +114,7 @@ Total: ~10 min on Pro, ~6 min on Air, ~8 min on desktop / Intel. For a more thor
 
 Why the long warmup matters: on a cold chassis, iteration 1 is necessarily faster than iteration 5 just because thermal mass is filling up, even on a healthy unit. Warmup puts every iteration on the same thermal footing so the variance metrics measure *unit defect*, not test artifact.
 
-> **Workload caveat.** SHA-256 is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. The test stresses thermal saturation and scheduling consistency, but not the integer pipelines or memory bandwidth that Cinebench would. Public reports of M5 Max bad batches came from Cinebench/Geekbench; this test catches *correlated* signals (variance + thermal behavior) but isn't 1:1 with their workload. A non-accelerated workload pass is on the [roadmap](../README.md#roadmap).
+> **Workload caveat.** SHA-256 is hardware-accelerated on Apple Silicon and Coffee Lake+ Intel. The test stresses thermal saturation and scheduling consistency, but not the integer pipelines or memory bandwidth that Cinebench would. Public reports of M5 Max bad batches came from Cinebench/Geekbench; this test catches *correlated* signals (variance + thermal behavior) but isn't 1:1 with their workload. A non-accelerated workload pass ships as opt-in Phase 4b (`./run --noaccel`): the same methodology with BLAKE2b, which has no CPU crypto instruction and so hits the integer pipelines instead.
 
 Check from the JSON:
 - `spread_pct` ((max − min) / mean × 100): pass < 5%, warn 5–10%, fail > 10%

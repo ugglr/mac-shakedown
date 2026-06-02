@@ -29,7 +29,7 @@ A target preset lets users run `./run --target <name>` to assert the unit matche
 | `memory_gb` | Asserted against `sysctl hw.memsize` |
 | `model_must_include` | Substring asserted against `machine_model` (catches chassis size) |
 | `calibration_dir` | Path to the `examples/<generation>/` notes for failure-analysis cross-reference |
-| `thermal_chassis_class` | One of `fanless`, `active-cooled-pro`, `desktop`, `intel-laptop`, `intel-desktop`. Sets thermal thresholds and Phase 4 warmup duration. See [`targets/README.md`](targets/README.md) for the per-class definition. |
+| `thermal_chassis_class` | One of `fanless`, `active-cooled-pro` (with `active-cooled-pro-14` / `active-cooled-pro-16` sub-classes for the 14" / 16" MacBook Pro), `desktop`, `intel-laptop`, `intel-desktop`. Sets thermal thresholds and Phase 4 warmup duration. See [`targets/README.md`](targets/README.md) for the per-class definition. |
 
 Open a PR adding the JSON. Match an existing one for style.
 
@@ -52,7 +52,7 @@ The verification scripts and runbook **don't need to change**. They're calibrati
 
 ## Improving a script
 
-The 5 scripts in `Verification/scripts/` are deliberately self-contained: bash plus Python heredocs, no external dependencies beyond what ships with macOS. Keep it that way. If you need to add a third-party benchmark (Geekbench, sysbench), make it optional with a fallback to the built-in equivalent.
+The scripts in `Verification/scripts/` are deliberately self-contained: bash plus Python heredocs, no external dependencies beyond what ships with macOS. Keep it that way. If you need to add a third-party benchmark (Geekbench, sysbench), or something that genuinely needs more than the stdlib (the opt-in `--gpu` phase compiles a Metal kernel with `swiftc` at runtime), make it optional and have it skip cleanly when the dependency is absent, so the default `./run` stays pure bash plus Python stdlib.
 
 ### Validating changes to a script
 
