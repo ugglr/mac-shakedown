@@ -1,16 +1,16 @@
 #!/bin/bash
-# run-shakedown.sh — orchestrator: runs the auto-runnable phases end-to-end and
+# run-shakedown.sh: orchestrator: runs the auto-runnable phases end-to-end and
 # writes two JSON reports: a full local copy and a sanitized submission copy.
 #
 # Usage:
 #   ./Verification/scripts/run-shakedown.sh --target mbp-16-m5-max-64
 #
 # Writes:
-#   Reports/local/<filename>.json       — full output, gitignored (keeps _raw_* fields)
-#   Reports/submissions/<filename>.json — sanitized, committable as a PR
+#   Reports/local/<filename>.json      , full output, gitignored (keeps _raw_* fields)
+#   Reports/submissions/<filename>.json, sanitized, committable as a PR
 #
 # Phases 6 (display), 7 (physical), 8 (Apple Diagnostics), 9 (idle drain) emit
-# `verdict: "skipped"` placeholders — friend hand-edits the local copy if they
+# `verdict: "skipped"` placeholders, friend hand-edits the local copy if they
 # ran any of those, then re-runs the sanitize step or copies the result.
 
 set -euo pipefail
@@ -94,7 +94,7 @@ print(d.get("thermal_chassis_class", "active-cooled-pro"))
 PYEOF
 )
 elif [[ -z "${CHASSIS_CLASS:-}" ]]; then
-  # No target and no override — auto-detect chassis from machine_name.
+  # No target and no override, auto-detect chassis from machine_name.
   # Mac Pro (Intel desktop) and MacBook Pro both contain "Pro"; check for
   # the MacBook prefix first so Mac Pro doesn't get misclassified as a laptop.
   CHASSIS_CLASS=$(python3 <<'PYEOF'
@@ -132,7 +132,7 @@ fi
 export CHASSIS_CLASS
 
 ignite() {
-  # Build-up flame animation before a phase. ~700 ms total — short enough that
+  # Build-up flame animation before a phase. ~700 ms total, short enough that
   # it doesn't pad the run, long enough to give the eye a transition. Falls
   # back to a plain echo when stderr isn't a TTY (CI, piped logs).
   if [[ ! -t 2 ]]; then
@@ -237,7 +237,7 @@ if [[ -z "${SHAKEDOWN_YES:-}" ]]; then
   cat <<INFO >&2
 
 About to run $duration_hint. Fans will spin up loud and the chassis will get
-hot. macOS throttles to protect the chip, so nothing dangerous — but expect a
+hot. macOS throttles to protect the chip, so nothing dangerous, but expect a
 noisy run.
 
 Set SHAKEDOWN_YES=1 to skip this prompt (e.g. for scripted runs).
@@ -255,7 +255,7 @@ if [[ "$NO_SUDO" -ne 1 ]]; then
   sudo -v
   # Background keep-alive: refresh sudo credentials every 60s while the
   # orchestrator is alive. macOS default sudo timestamp is 5 min, and Phase 4
-  # on Intel takes ~8 min — without this, the user gets a second password
+  # on Intel takes ~8 min, without this, the user gets a second password
   # prompt mid-run.
   ( while true; do
       sleep 60
@@ -280,7 +280,7 @@ NOACCEL_JSON="$WORK/noaccel.json"
 THERMAL_JSON="$WORK/thermal.json"
 GPU_JSON="$WORK/gpu.json"
 
-ignite "Phase 0 — preflight"
+ignite "Phase 0: preflight"
 {
   echo "=== uptime ==="
   uptime
@@ -292,19 +292,19 @@ ignite "Phase 0 — preflight"
   networksetup -getairportpower en0 2>/dev/null || echo "(no en0)"
 } > "$PREFLIGHT_TXT" 2>&1
 
-ignite "Phase 1 — inventory"
+ignite "Phase 1: inventory"
 "$SCRIPT_DIR/inventory.sh" > "$INVENTORY_JSON"
 
-ignite "Phase 2 — battery"
+ignite "Phase 2: battery"
 "$SCRIPT_DIR/battery.sh" > "$BATTERY_JSON"
 
 # Run race + SSD benchmarks while the chassis is still cold. Cold race captures
 # peak boost throughput unobscured by thermal saturation. SSD numbers are
 # similarly cleaner before NVMe controllers warm up under chassis heat soak.
-ignite "Phase 10 — race benchmark (xz compression, ~30-60s)"
+ignite "Phase 10: race benchmark (xz compression, ~30-60s)"
 "$SCRIPT_DIR/race-bench.sh" > "$RACE_JSON"
 
-ignite "Phase 11 — SSD sequential read/write (~30s)"
+ignite "Phase 11: SSD sequential read/write (~30s)"
 if [[ "$NO_SUDO" -eq 1 ]]; then
   ALLOW_NO_PURGE=1 "$SCRIPT_DIR/ssd-test.sh" > "$SSD_JSON"
 else
@@ -314,7 +314,7 @@ fi
 ignite "Phase 12: memory bandwidth (~15s)"
 "$SCRIPT_DIR/memory-bandwidth.sh" > "$MEMBW_JSON"
 
-ignite "Phase 4 — CPU variance (~6-10 min depending on chassis)"
+ignite "Phase 4: CPU variance (~6-10 min depending on chassis)"
 start_heartbeat
 "$SCRIPT_DIR/cpu-variance.sh" > "$VARIANCE_JSON"
 stop_heartbeat
@@ -334,12 +334,12 @@ EOF
 fi
 
 if [[ "$NO_SUDO" -eq 1 ]]; then
-  ignite "Phase 5 — skipped (--no-sudo)"
+  ignite "Phase 5: skipped (--no-sudo)"
   cat > "$THERMAL_JSON" <<EOF
 {"verdict":"skipped","verdict_reasons":["--no-sudo: thermal phase needs powermetrics + sudo"],"chassis_class":"$CHASSIS_CLASS","duration_s":0,"data_quality":"skipped"}
 EOF
 else
-  ignite "Phase 5 — sustained thermal load (~10 min, needs sudo)"
+  ignite "Phase 5: sustained thermal load (~10 min, needs sudo)"
   start_heartbeat
   # shellcheck disable=SC2024  # the redirect target is a user-owned tempdir, not privileged.
   sudo CHASSIS_CLASS="$CHASSIS_CLASS" "$SCRIPT_DIR/thermal-load.sh" > "$THERMAL_JSON"
@@ -433,16 +433,16 @@ n_perf = inv_summary.get("perf_cores") or 0
 if load_avg_1m is not None and n_perf and load_avg_1m > n_perf * 0.5:
     preflight_verdict = "warn"
     preflight_reasons.append(
-        f"1m load avg {load_avg_1m:.2f} above half perf-core count ({n_perf}) — "
+        f"1m load avg {load_avg_1m:.2f} above half perf-core count ({n_perf}), "
         f"close background apps before trusting variance numbers"
     )
 if not ac_power:
     preflight_verdict = "warn"
-    preflight_reasons.append("not on AC power — sustained-perf tests assume AC")
+    preflight_reasons.append("not on AC power, sustained-perf tests assume AC")
 
 chip = inv_summary.get("chip") or ""
 mem_gb = inv_summary.get("memory_gb")
-# Search across model + model_identifier — the size suffix shows up in either
+# Search across model + model_identifier, the size suffix shows up in either
 # field depending on generation (Intel "MacBookPro16,1" vs Apple Silicon "Mac17,1").
 model_haystack = " ".join(filter(None, [inv_summary.get("model"), inv_summary.get("model_identifier")]))
 
@@ -474,12 +474,12 @@ if target:
         if inv_verdict == "pass":
             inv_verdict = "warn"
         inv_reasons.append(
-            f"model '{model_haystack}' does not include target substring '{target.get('model_must_include')}' "
-            f"— system_profiler does not reliably expose screen size on Apple Silicon; verify manually"
+            f"model '{model_haystack}' does not include target substring '{target.get('model_must_include')}'. "
+            f"system_profiler does not reliably expose screen size on Apple Silicon; verify manually"
         )
 else:
     inv_asserts = {"ran_without_target": True, "ssd_smart": ssd_smart}
-    inv_reasons.append("no target preset specified — recorded actual values without asserting")
+    inv_reasons.append("no target preset specified, recorded actual values without asserting")
 
 if ssd_smart and ssd_smart != "Verified":
     inv_verdict = "fail"
@@ -497,7 +497,7 @@ bat_reasons = []
 if target:
     if isinstance(cycle, int) and cycle > 5:
         bat_verdict = "fail"
-        bat_reasons.append(f"cycle_count {cycle} > 5 — likely a returned/refurb unit, not new-from-factory")
+        bat_reasons.append(f"cycle_count {cycle} > 5, likely a returned/refurb unit, not new-from-factory")
     elif isinstance(cycle, int) and cycle > 1:
         bat_verdict = "warn"
         bat_reasons.append(f"cycle_count {cycle} above the typical factory range (0–1)")
@@ -505,7 +505,7 @@ if target:
         bat_verdict = "warn"
         bat_reasons.append(f"max_capacity_pct {max_pct}% below the 99% expected on a new unit")
 elif isinstance(cycle, int):
-    bat_reasons.append(f"cycle_count {cycle} (informational — no target, factory-fresh check skipped)")
+    bat_reasons.append(f"cycle_count {cycle} (informational, no target, factory-fresh check skipped)")
 if isinstance(max_pct, (int, float)) and max_pct < 95:
     bat_verdict = "fail"
     bat_reasons.append(f"max_capacity_pct {max_pct}% < 95%")
@@ -559,7 +559,7 @@ thermal_reasons = thermal.get("verdict_reasons") or []
 thermal_details = {k: v for k, v in thermal.items() if k not in ("verdict", "verdict_reasons", "raw_log_path")}
 
 # Race + SSD benchmarks default to "info" verdict in v0.2 (no pass/fail
-# thresholds yet — they're calibration inputs). "info" is treated as not-failing
+# thresholds yet, they're calibration inputs). "info" is treated as not-failing
 # and not-warning in the overall result computation below.
 race_verdict = race.get("verdict", "info")
 race_reasons = race.get("verdict_reasons") or []
@@ -588,7 +588,7 @@ skipped_phases = {
     "6_display": "run ./Verification/scripts/display-test.sh and fill in manual_responses",
     "7_physical": "follow Runbook Phase 7 manual checklist",
     "8_apple_diagnostics": "reboot into Diagnostics (Cmd-D from startup options); record code",
-    "9_idle_drain": "optional — see Runbook Phase 9",
+    "9_idle_drain": "optional, see Runbook Phase 9",
 }
 
 def phase_block(verdict, duration_s, details, reasons):
@@ -669,7 +669,7 @@ else:
     target_block = {
         "preset": None,
         "thermal_chassis_class": variance.get("chassis_class"),
-        "note": "ran without --target — inventory asserts skipped",
+        "note": "ran without --target, inventory asserts skipped",
     }
 
 report_full = {

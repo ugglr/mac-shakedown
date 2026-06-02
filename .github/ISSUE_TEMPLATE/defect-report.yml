@@ -1,6 +1,6 @@
 name: Defect report
 description: Share a defect Shakedown found on your Mac
-title: "Defect report — [chip/model]"
+title: "Defect report: [chip/model]"
 labels: ["defect-report"]
 body:
   - type: markdown
@@ -41,16 +41,16 @@ body:
     attributes:
       label: Which phase failed
       options:
-        - "0 — Pre-flight"
-        - "1 — Inventory"
-        - "2 — Battery"
-        - "3 — Sensors"
-        - "4 — CPU variance"
-        - "5 — Thermal load"
-        - "6 — Display"
-        - "7 — Physical inspection"
-        - "8 — Apple Diagnostics"
-        - "9 — Idle drain"
+        - "0: Pre-flight"
+        - "1: Inventory"
+        - "2: Battery"
+        - "3: Sensors"
+        - "4: CPU variance"
+        - "5: Thermal load"
+        - "6: Display"
+        - "7: Physical inspection"
+        - "8: Apple Diagnostics"
+        - "9: Idle drain"
         - Multiple
     validations:
       required: true
@@ -76,7 +76,7 @@ body:
     id: notes
     attributes:
       label: Anything else
-      description: Context that might matter — store, ambient temp, repro pattern, etc.
+      description: Context that might matter: store, ambient temp, repro pattern, etc.
     validations:
       required: false
 

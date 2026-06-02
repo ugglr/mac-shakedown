@@ -1,5 +1,5 @@
 #!/bin/bash
-# cpu-variance.sh — sustained parallel SHA-256, time-capped iterations on a
+# cpu-variance.sh: sustained parallel SHA-256, time-capped iterations on a
 # pre-warmed (saturated) chassis. Detects batch-level performance variance
 # (~41.5% multi-core variance reported on M5 Max bad batches in early 2026).
 #
@@ -22,7 +22,7 @@
 #   2) WARMUP_SEC of continuous load            (chassis to thermal equilibrium)
 #   3) ITERATIONS × SECONDS_PER_ITER timed runs (steady-state throughput, MB/s)
 #   4) Compute spread, max-to-min ratio, early-vs-late decline, and
-#      burst-to-steady ratio (advisory — flags possible always-throttled units)
+#      burst-to-steady ratio (advisory, flags possible always-throttled units)
 #
 # Output: JSON to stdout. Per-iteration progress to stderr.
 #
@@ -97,7 +97,7 @@ import statistics
 import sys
 import time
 
-# macOS Python defaults to "spawn" which re-imports the script — fails for stdin.
+# macOS Python defaults to "spawn" which re-imports the script, fails for stdin.
 multiprocessing.set_start_method("fork", force=True)
 
 BURST_SEC        = int(sys.argv[1])
@@ -144,7 +144,7 @@ if BURST_SEC > 0:
     print(f"  burst: {burst_mb:,} MB in {burst_elapsed:.2f}s = {burst_throughput:,.0f} MB/s",
           file=sys.stderr)
 
-# ---- 2) Warmup (discarded for variance) — chunked so we capture the tail ----
+# ---- 2) Warmup (discarded for variance), chunked so we capture the tail ----
 warmup_tail_throughput = None
 if WARMUP_SEC > 0:
     print(f"  warmup: {WARMUP_SEC}s to reach thermal equilibrium…", file=sys.stderr)
@@ -156,7 +156,7 @@ if WARMUP_SEC > 0:
         last_chunk_throughput, _, _, _, _, _ = run_window(sec)
         remaining -= sec
     warmup_tail_throughput = last_chunk_throughput
-    print(f"  warmup done (tail = {warmup_tail_throughput:,.0f} MB/s — discarded for spread)",
+    print(f"  warmup done (tail = {warmup_tail_throughput:,.0f} MB/s, discarded for spread)",
           file=sys.stderr)
 
 # ---- 3) Timed iterations ----
@@ -199,12 +199,12 @@ if len(throughputs) >= 4:
     decline_pct = round((early - late) / early * 100, 3) if early else None
 
 # Burst-to-steady ratio: ADVISORY. Without crowd-sourced calibration baseline
-# this is hard to interpret — record it for the aggregator to judge.
+# this is hard to interpret, record it for the aggregator to judge.
 burst_to_steady_ratio = None
 if burst_throughput and burst_throughput > 0:
     burst_to_steady_ratio = round(mean / burst_throughput, 4)
 
-# Within-iter worker imbalance — a single defective P-core would consistently
+# Within-iter worker imbalance, a single defective P-core would consistently
 # under-perform if the macOS scheduler happens to pin a worker to it. Healthy
 # units show < 5% median imbalance; > 10% suggests one worker (and possibly
 # one core) is consistently behind.
@@ -224,7 +224,7 @@ info_signals = []
 
 if dead_worker_iter is not None:
     fail_signals.append(
-        f"iteration {dead_worker_iter} had zero throughput (worker died) — verdict cannot be trusted"
+        f"iteration {dead_worker_iter} had zero throughput (worker died), verdict cannot be trusted"
     )
 
 # Spread
@@ -235,7 +235,7 @@ elif spread_pct > 5:
 
 # Max-to-min ratio (with explicit warn band)
 if ratio_max == float("inf"):
-    fail_signals.append("min throughput is 0 — cannot compute ratio")
+    fail_signals.append("min throughput is 0, cannot compute ratio")
 elif ratio_max >= 1.4:
     fail_signals.append(f"max-to-min ratio {ratio_max:.2f}× ≥ 1.4×")
 elif ratio_max >= 1.2:
@@ -248,26 +248,26 @@ if decline_pct is not None:
     elif decline_pct > 5:
         warn_signals.append(f"throughput declined {decline_pct:.1f}% in 5–10% warn range")
 
-# Burst-to-steady ratio — recorded as info, aggregator interprets.
+# Burst-to-steady ratio, recorded as info, aggregator interprets.
 if burst_to_steady_ratio is not None and burst_to_steady_ratio > 0.97:
     info_signals.append(
-        f"burst-to-steady {burst_to_steady_ratio:.2f}× — chassis gives back almost no thermal "
+        f"burst-to-steady {burst_to_steady_ratio:.2f}×, chassis gives back almost no thermal "
         f"headroom from cold; could indicate always-throttled unit, or just very strong cooling. "
         f"Compare against calibration baseline."
     )
 
-# Worker imbalance — partial mitigation for the no-CPU-pinning gap. macOS
+# Worker imbalance, partial mitigation for the no-CPU-pinning gap. macOS
 # schedules around a slow core, but if one worker is consistently 10%+ behind
 # even after that, surface it.
 if max_worker_imbalance_pct is not None:
     if max_worker_imbalance_pct > 20:
         fail_signals.append(
-            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}% — "
+            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}%, "
             f"one worker consistently behind by > 20%, possible single-core defect"
         )
     elif max_worker_imbalance_pct > 10:
         warn_signals.append(
-            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}% — "
+            f"max within-iter worker imbalance {max_worker_imbalance_pct:.1f}%, "
             f"one worker behind by > 10%; rerun to confirm"
         )
 
@@ -278,7 +278,7 @@ if fail_signals:
 elif len(warn_signals) >= 2:
     verdict = "fail"
     fail_signals.append(
-        f"compound warning ({len(warn_signals)} independent warn signals) — escalated to fail"
+        f"compound warning ({len(warn_signals)} independent warn signals), escalated to fail"
     )
 elif warn_signals:
     verdict = "warn"
@@ -288,7 +288,7 @@ if not reasons:
     reasons.append(
         f"spread {spread_pct:.2f}%, ratio {ratio_max:.2f}×"
         + (f", decline {decline_pct:.2f}%" if decline_pct is not None else "")
-        + " — within healthy range"
+        + ", within healthy range"
     )
 
 result = {

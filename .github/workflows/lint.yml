@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint:
-    # Static checks only — scripts target macOS at runtime, but shellcheck,
+    # Static checks only, scripts target macOS at runtime, but shellcheck,
     # python ast.parse, and json.tool are all platform-agnostic.
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +29,7 @@ jobs:
 
       - name: Syntax-check Python heredocs
         # Each script may contain one or more `python3 - <<'PYEOF' … PYEOF` blocks.
-        # Extract them with awk and run ast.parse — catches Python syntax errors
+        # Extract them with awk and run ast.parse, catches Python syntax errors
         # without executing macOS-only side effects (system_profiler, ioreg, etc.).
         run: |
           set -euo pipefail
@@ -138,7 +138,7 @@ jobs:
               for e in errors:
                   print(f"  - {e}", file=sys.stderr)
               sys.exit(1)
-          print(f"audited {len(files)} submission file(s) — all clean")
+          print(f"audited {len(files)} submission file(s), all clean")
           PYEOF
 
       - name: Verify markdown links resolve to existing files
@@ -149,7 +149,7 @@ jobs:
         #
         # Implemented in Python instead of bash because the previous bash
         # version used `${path//%/\\x}` parameter-expansion escapes that
-        # behave differently in zsh — false positives for contributors
+        # behave differently in zsh, false positives for contributors
         # running this check locally on default-shell macOS.
         run: |
           python3 <<'PYEOF'
