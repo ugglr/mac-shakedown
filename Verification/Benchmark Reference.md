@@ -7,6 +7,8 @@ tags: [verification, benchmarks, reference]
 
 Shakedown's own thresholds are not yet calibrated against confirmed-good hardware, and its default workload (SHA-256) is hardware-accelerated, so the harness is a structured *consistency* check, not an absolute pass/fail. Published third-party benchmarks fill the other half: an absolute floor your unit should clear when cool, plus a crowd-sourced distribution of real units you can compare against. This is the "install this, run this, your unit should score about X" companion to the [Runbook](Runbook.md), tuned for catching a bad unit (the M5 Max especially) in a store you cannot easily return to.
 
+> In a hurry at the counter? The [Store Day Checklist](Store%20Day%20Checklist.md) is the short, top-to-bottom run-this-then-that version. This page is the detailed reference behind it (expected scores, sources, caveats).
+
 Use it alongside the harness:
 - `./run --store` runs the thorough profile (both CPU workloads, GPU, longer warmup, more iterations) for the structured variance and thermal verdict.
 - `compare-reports.sh REFERENCE.json UNIT.json` diffs your unit against a known-good sibling, which is the most trustworthy signal while the absolute thresholds are uncalibrated.
