@@ -1,30 +1,25 @@
 #!/bin/bash
-# memory-bandwidth.sh: STREAM-style sequential memory copy bandwidth.
+# memory-bandwidth.sh: STREAM-style memory bandwidth.
 #
-# Spawns one worker per P-core, each copying its own pair of large buffers with
-# ctypes.memmove in a tight loop, and sums the aggregate throughput. A single
-# thread cannot saturate the multi-channel memory controllers on Apple Silicon
-# (a lone memcpy tops out well below peak), so the test is multi-threaded the way
-# STREAM is built with OpenMP.
+# Prefers the vendored STREAM triad (stream-triad.c: real Copy / Scale / Add /
+# Triad across one thread per P-core), compiled at runtime with the clang that
+# ships in the Xcode Command Line Tools. No network, no shipped binary: the C
+# source is in the repo, compiled to a tempfile, run, deleted. When clang is
+# unavailable it falls back to a pure-Python ctypes.memmove copy proxy, so the
+# phase always produces a number.
 #
-# What it measures: sequential copy bandwidth (memcpy). Each copy reads N bytes
-# and writes N bytes, so "touched" traffic is 2x the reported copy bandwidth.
-# This is a lower bound on a full STREAM triad (copy / scale / add / triad);
-# scale and add need elementwise arithmetic that pure-Python can't do at memory
-# speed without a native kernel. memmove is the honest pure-stdlib proxy: it
-# still catches a memory subsystem that is slow or inconsistent across runs.
-#
-# Buffers are sized to exceed the last-level / system-level cache so the copy is
-# DRAM-bound, not cache-bound.
+# What it measures: DRAM bandwidth. A single thread cannot saturate the
+# multi-channel controllers on Apple Silicon, so the kernels are multi-threaded
+# the way STREAM uses OpenMP. Buffers are sized past the system-level cache.
 #
 # Output: JSON to stdout. Progress to stderr.
 #
 # Env knobs:
-#   MEMBW_MB        default 1024  (TARGET total working set in MB across all
-#                                  workers; split into 2 buffers per worker.
-#                                  Auto-capped to fit RAM.)
-#   MEMBW_ITERS     default 5     (timed iterations, for run-to-run variance)
-#   MEMBW_SECONDS   default 2     (seconds per timed iteration)
+#   MEMBW_MB        default 1024  (TARGET total working set in MB, auto-capped to
+#                                  40% of RAM; split across 3 arrays for the triad
+#                                  or 2 buffers per worker for the proxy)
+#   MEMBW_ITERS     default 5     (reps, for run-to-run variance)
+#   MEMBW_SECONDS   default 2     (seconds per iteration, memmove proxy only)
 #   WORKERS         default = P-cores
 
 set -euo pipefail
@@ -53,10 +48,93 @@ if ! [[ "$WORKERS" =~ ^[0-9]+$ ]] || (( WORKERS < 1 )); then
 fi
 
 MEMSIZE=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STREAM_SRC="$SCRIPT_DIR/stream-triad.c"
 
-echo "memory-bandwidth: ${MEMBW_MB}MB working set across $WORKERS workers, $MEMBW_ITERS x ${MEMBW_SECONDS}s" >&2
+# Budget the working set at 40% of physical RAM so we never push into swap.
+budget_mb=$MEMBW_MB
+if [[ "$MEMSIZE" =~ ^[0-9]+$ ]] && (( MEMSIZE > 0 )); then
+  ram_mb=$(( MEMSIZE / 1024 / 1024 ))
+  cap_mb=$(( ram_mb * 40 / 100 ))
+  if (( budget_mb > cap_mb )); then budget_mb=$cap_mb; fi
+fi
 
-python3 - "$MEMBW_MB" "$MEMBW_ITERS" "$MEMBW_SECONDS" "$WORKERS" "$MEMSIZE" <<'PYEOF'
+# ---- Preferred path: vendored STREAM triad compiled with clang ----
+if command -v clang >/dev/null 2>&1 && [[ -f "$STREAM_SRC" ]]; then
+  per_array_mb=$(( budget_mb / 3 ))
+  if (( per_array_mb >= 64 )); then
+    STREAM_BIN=$(mktemp -t shakedown-stream.XXXXXX)
+    trap 'rm -f "$STREAM_BIN"' EXIT INT TERM
+    if clang -O3 -pthread "$STREAM_SRC" -o "$STREAM_BIN" 2>/dev/null; then
+      per_array_bytes=$(( per_array_mb * 1024 * 1024 ))
+      echo "memory-bandwidth: STREAM triad, ${per_array_mb}MB/array x3, $WORKERS threads, $MEMBW_ITERS reps" >&2
+      T0=$(date +%s)
+      if RAW=$("$STREAM_BIN" "$per_array_bytes" "$WORKERS" "$MEMBW_ITERS" 2>/dev/null); then
+        T1=$(date +%s)
+        python3 - "$RAW" "$WORKERS" "$per_array_mb" "$((T1 - T0))" <<'PYEOF'
+import json
+import statistics
+import sys
+
+raw = json.loads(sys.argv[1])
+workers = int(sys.argv[2])
+per_array_mb = int(sys.argv[3])
+wall = int(sys.argv[4])
+res = raw["results"]
+
+
+def mean(xs):
+    return round(statistics.mean(xs), 2) if xs else 0.0
+
+
+triad = res["triad"]
+t_mean = mean(triad)
+t_min = round(min(triad), 2) if triad else 0.0
+t_max = round(max(triad), 2) if triad else 0.0
+spread = round((t_max - t_min) / t_mean * 100, 2) if t_mean else 0.0
+c_mean, s_mean, a_mean = mean(res["copy"]), mean(res["scale"]), mean(res["add"])
+
+result = {
+    "workload": "STREAM-style triad (vendored C, pthreads), DRAM-bound",
+    "method": "stream-triad",
+    "workers": workers,
+    "working_set_mb": per_array_mb * 3,
+    "reps": raw.get("reps"),
+    "copy_gb_per_s": res["copy"],
+    "scale_gb_per_s": res["scale"],
+    "add_gb_per_s": res["add"],
+    "triad_gb_per_s": triad,
+    "mean_copy_gb_per_s": c_mean,
+    "mean_scale_gb_per_s": s_mean,
+    "mean_add_gb_per_s": a_mean,
+    "mean_triad_gb_per_s": t_mean,
+    "min_triad_gb_per_s": t_min,
+    "max_triad_gb_per_s": t_max,
+    "spread_pct": spread,
+    "wall_seconds": wall,
+    "data_quality": "ok",
+    "data_quality_notes": [],
+    "verdict": "info",
+    "verdict_reasons": [
+        f"triad mean {t_mean:,.1f} GB/s (copy {c_mean:,.1f}, scale {s_mean:,.1f}, "
+        f"add {a_mean:,.1f}) across {workers} threads, spread {spread:.1f}%",
+        "informational in v0.2; calibrated pass/fail thresholds land in v0.3"
+    ],
+}
+print(json.dumps(result, indent=2))
+PYEOF
+        exit 0
+      fi
+    fi
+  fi
+  echo "memory-bandwidth: STREAM triad unavailable (clang/compile/size), using memmove proxy" >&2
+  TRIAD_FALLBACK="STREAM triad unavailable (clang missing, compile failed, or too little RAM); used the pure-Python memmove proxy instead"
+fi
+
+# ---- Fallback: pure-Python ctypes.memmove copy proxy ----
+echo "memory-bandwidth: ${MEMBW_MB}MB working set across $WORKERS workers (memmove proxy)" >&2
+
+python3 - "$MEMBW_MB" "$MEMBW_ITERS" "$MEMBW_SECONDS" "$WORKERS" "$MEMSIZE" "${TRIAD_FALLBACK:-}" <<'PYEOF'
 import ctypes
 import json
 import multiprocessing
@@ -73,19 +151,14 @@ ITERATIONS    = int(sys.argv[2])
 SECONDS       = int(sys.argv[3])
 WORKERS       = int(sys.argv[4])
 MEMSIZE_BYTES = int(sys.argv[5])
+FALLBACK_NOTE = sys.argv[6]
 
 MB = 1024 * 1024
-data_quality_notes = []
+data_quality_notes = [FALLBACK_NOTE] if FALLBACK_NOTE else []
 
-# Size each worker's buffers. Total working set is split into 2 buffers (src+dst)
-# per worker. Floor per-buffer at 64 MB so it comfortably exceeds per-core L2 and
-# the aggregate exceeds the system-level cache (DRAM-bound, not cache-bound).
 MIN_BUFFER_MB = 64
 per_buffer_mb = max(MIN_BUFFER_MB, TARGET_MB // (2 * WORKERS))
 
-# RAM guard: keep the working set under 40% of physical memory so we don't push
-# the machine into swap (which would measure the SSD, not RAM). Scale down, and
-# skip only if we cannot keep buffers above a cache-busting 32 MB.
 if MEMSIZE_BYTES > 0:
     budget_mb = int(MEMSIZE_BYTES / MB * 0.40)
     max_buffer_mb = budget_mb // (2 * WORKERS)
@@ -98,13 +171,13 @@ if MEMSIZE_BYTES > 0:
     if per_buffer_mb < 32:
         print(json.dumps({
             "workload": "multi-threaded sequential memcpy (ctypes.memmove)",
+            "method": "memmove-proxy",
             "workers": WORKERS,
             "verdict": "skipped",
             "data_quality": "skipped",
-            "data_quality_notes": [
+            "data_quality_notes": data_quality_notes + [
                 f"not enough RAM to size cache-busting buffers for {WORKERS} "
-                f"workers ({MEMSIZE_BYTES // MB} MB total); lower WORKERS or "
-                f"raise MEMBW_MB on a machine with more memory"
+                f"workers ({MEMSIZE_BYTES // MB} MB total)"
             ],
             "verdict_reasons": ["insufficient RAM for a DRAM-bound test; phase skipped"],
         }, indent=2))
@@ -120,7 +193,6 @@ def worker(args):
     dst = bytearray(per_bytes)
     csrc = (ctypes.c_char * per_bytes).from_buffer(src)
     cdst = (ctypes.c_char * per_bytes).from_buffer(dst)
-    # Fault every page in and prime, OUTSIDE the timed region.
     ctypes.memset(csrc, 1, per_bytes)
     ctypes.memset(cdst, 2, per_bytes)
     memmove = ctypes.memmove
@@ -139,9 +211,8 @@ def run_window(seconds):
     with multiprocessing.Pool(WORKERS) as pool:
         results = pool.map(worker, [(per_buffer_bytes, seconds)] * WORKERS)
     total_bytes = sum(r[0] for r in results)
-    # Workers run concurrently; the longest worker bounds the wall window.
     wall = max((r[1] for r in results), default=0.0)
-    copy_bw = total_bytes / wall if wall > 0 else 0.0  # bytes copied/s (N per memmove)
+    copy_bw = total_bytes / wall if wall > 0 else 0.0
     return copy_bw, wall
 
 
@@ -170,6 +241,7 @@ if per_buffer_mb < MIN_BUFFER_MB:
 
 result = {
     "workload": "multi-threaded sequential memcpy (ctypes.memmove), DRAM-bound",
+    "method": "memmove-proxy",
     "workers": WORKERS,
     "per_buffer_mb": per_buffer_mb,
     "total_working_set_mb": working_set_mb,
