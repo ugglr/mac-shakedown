@@ -9,7 +9,7 @@ The procedure for each verification phase. The automated phases (0–5, the cold
 
 **Total time:** ~45 min on a MacBook Pro, ~25 min on a fanless Air, ~35 min on a desktop or Intel Mac, +30 min if you opt into the idle-drain test.
 
-> **Target preset.** Pass `--target <name>` to assert the unit matches the preset in `targets/<name>.json`. Without `--target`, the inventory asserts are skipped. Useful for Macs that don't yet have a preset, or for self-testing an existing unit.
+> **Target preset.** Without `--target`, the matching preset is auto-selected from the detected hardware (chip, memory, model), so the right thresholds, asserts, and baseline apply automatically; if none matches, the inventory asserts are skipped. Pass `--target <name>` to assert the unit matches the preset in `targets/<name>.json`, or to override the match.
 
 ## Phase 0: Pre-flight (1 min)
 

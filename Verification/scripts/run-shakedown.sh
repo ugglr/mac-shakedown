@@ -67,8 +67,10 @@ Usage: $(basename "$0") [--target <preset>] [--store] [--strict] [--no-sudo] [--
 
   --target <preset>   optional. Target preset name (file under targets/ without .json)
                       e.g. mbp-16-m5-max-64, macbook-air-m5-16, mbp-16-intel-2019.
-                      Without a target, inventory asserts are skipped (useful for
-                      Macs that don't yet have a preset).
+                      If omitted, the matching preset is auto-selected from the
+                      detected hardware (chip, memory, model), so you usually do
+                      not need it. Pass it to assert an expected SKU, or to
+                      override the match. If nothing matches, asserts are skipped.
   --no-sudo           skip Phase 5 (sustained thermal load), the only phase that
                       needs sudo. Phase 4 (variance) still runs and is the headline
                       test. Alias: --skip-thermal.
@@ -96,8 +98,8 @@ Usage: $(basename "$0") [--target <preset>] [--store] [--strict] [--no-sudo] [--
   --notes "..."       optional free-form note to embed in the report. Setting any
                       note flips submission_safe to false (notes may contain PII).
 
-Chassis class: read from the preset when --target is given; otherwise
-auto-detected from system_profiler (override with CHASSIS_CLASS env var).
+Chassis class: read from the preset when one is given or auto-selected;
+otherwise auto-detected from system_profiler (override with CHASSIS_CLASS env var).
 HELP
       exit 0
       ;;
@@ -127,6 +129,67 @@ if [[ "$STORE" -eq 1 ]]; then
 fi
 
 TARGET_FILE=""
+
+# Auto-select a preset when the user gave neither --target nor a CHASSIS_CLASS
+# override: match the detected hardware (chip, memory, model) against the presets
+# in targets/. The preset's match fields are exactly what the machine reports
+# about itself, using the same sources as the inventory asserts (chip_type /
+# cpu_type, hw.memsize), so an auto-selected preset always passes its own asserts.
+# One unambiguous match wins; zero or several leaves TARGET empty and we fall back
+# to chassis auto-detection with asserts skipped, exactly as before. Pass --target
+# to assert an expected SKU or to override the match.
+if [[ -z "$TARGET" && -z "${CHASSIS_CLASS:-}" ]]; then
+  TARGET=$(python3 - "$REPO_ROOT/targets" <<'PYEOF'
+import glob
+import json
+import os
+import subprocess
+import sys
+
+def sysctl(key):
+    try:
+        return subprocess.check_output(["sysctl", "-n", key],
+                                       stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:
+        return None
+
+try:
+    sp = json.loads(subprocess.check_output(
+        ["system_profiler", "-json", "SPHardwareDataType"],
+        stderr=subprocess.DEVNULL))
+    hw = sp["SPHardwareDataType"][0]
+except Exception:
+    sys.exit(0)  # no detection -> no auto-target, fall back
+
+chip = hw.get("chip_type") or hw.get("cpu_type") or ""
+model = " ".join(filter(None, [hw.get("machine_model"), hw.get("machine_name")]))
+memraw = sysctl("hw.memsize")
+mem_gb = round(int(memraw) / (1024 ** 3)) if memraw and memraw.isdigit() else None
+
+matches = []
+for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.json"))):
+    try:
+        with open(path) as f:
+            t = json.load(f)
+    except (OSError, ValueError):
+        continue
+    cp = t.get("chip_pattern")
+    if not cp or cp not in chip:
+        continue
+    if t.get("memory_gb") is not None and t["memory_gb"] != mem_gb:
+        continue
+    mmi = t.get("model_must_include")
+    if mmi and mmi not in model:
+        continue
+    matches.append(os.path.splitext(os.path.basename(path))[0])
+
+if len(matches) == 1:
+    print(matches[0])
+PYEOF
+)
+  [[ -n "$TARGET" ]] && echo "shakedown: auto-selected target '$TARGET' from detected hardware (pass --target to override)" >&2
+fi
+
 if [[ -n "$TARGET" ]]; then
   TARGET_FILE="$REPO_ROOT/targets/$TARGET.json"
   if [[ ! -f "$TARGET_FILE" ]]; then
