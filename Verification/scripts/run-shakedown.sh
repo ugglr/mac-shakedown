@@ -25,6 +25,7 @@ RUN_NOACCEL=0
 RUN_GPU=0
 STORE=0
 RUN_LLAMA=0
+STRICT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -56,9 +57,13 @@ while [[ $# -gt 0 ]]; do
       RUN_LLAMA=1
       shift
       ;;
+    --strict)
+      STRICT=1
+      shift
+      ;;
     -h|--help)
       cat <<HELP
-Usage: $(basename "$0") [--target <preset>] [--store] [--no-sudo] [--noaccel] [--gpu] [--llama] [--notes "free-form notes"]
+Usage: $(basename "$0") [--target <preset>] [--store] [--strict] [--no-sudo] [--noaccel] [--gpu] [--llama] [--notes "free-form notes"]
 
   --target <preset>   optional. Target preset name (file under targets/ without .json)
                       e.g. mbp-16-m5-max-64, macbook-air-m5-16, mbp-16-intel-2019.
@@ -83,6 +88,11 @@ Usage: $(basename "$0") [--target <preset>] [--store] [--no-sudo] [--noaccel] [-
                       warmup with more iterations, so an intermittent batch defect
                       has more chances to surface. ~40-50 min on AC. Honors any
                       WARMUP_SEC / ITERATIONS / SECONDS_PER_ITER you set yourself.
+  --strict            production / calibration mode: refuse to score a run taken
+                      under non-comparable conditions. Checks the preconditions
+                      that are only warnings by default (on AC, quiet system)
+                      before the load phases and aborts if they fail, so you do
+                      not burn 45 minutes on a number you would have to discard.
   --notes "..."       optional free-form note to embed in the report. Setting any
                       note flips submission_safe to false (notes may contain PII).
 
@@ -97,6 +107,8 @@ HELP
       ;;
   esac
 done
+
+export STRICT
 
 # --store: thorough profile for verifying a new unit (especially M5). Run both CPU
 # workloads (SHA-256 plus the non-accelerated BLAKE2b that matches where the M5
@@ -340,6 +352,46 @@ ignite "Phase 1: inventory"
 ignite "Phase 2: battery"
 "$SCRIPT_DIR/battery.sh" > "$BATTERY_JSON"
 
+# Strict mode (production / calibration use): the preconditions that are only
+# WARNINGS by default become hard gates here. A run not on AC, or on a busy
+# system, is not comparable to a golden baseline, so refuse to score it rather
+# than burn 45 minutes on a number we would have to throw away. Same thresholds
+# as the Phase 0 verdict below; this just promotes them and runs before the load
+# phases. Inventory (perf-core count) and preflight have both run by now.
+if [[ "$STRICT" -eq 1 ]]; then
+  ignite "Strict mode: checking preconditions (AC power, quiet system)"
+  if ! python3 - "$PREFLIGHT_TXT" "$INVENTORY_JSON" <<'PYEOF'
+import json
+import re
+import sys
+
+preflight = open(sys.argv[1]).read()
+with open(sys.argv[2]) as f:
+    inv = json.load(f).get("summary", {})
+
+fails = []
+if not ("AC" in preflight or "AC Power" in preflight):
+    fails.append("not on AC power; a scored run must be on AC, not battery")
+m = re.search(r"load averages?:\s+([\d.]+)", preflight)
+n_perf = inv.get("perf_cores") or 0
+if m and n_perf and float(m.group(1)) > n_perf * 0.5:
+    fails.append(f"1m load avg {float(m.group(1)):.2f} above half the {n_perf} "
+                 "perf cores; close background apps and rerun")
+
+if fails:
+    sys.stderr.write("\n  strict preconditions not met:\n")
+    for reason in fails:
+        sys.stderr.write(f"    - {reason}\n")
+    sys.stderr.write("  Fix these and rerun, or drop --strict to run anyway "
+                     "(advisory, not scored).\n\n")
+    sys.exit(1)
+PYEOF
+  then
+    echo "shakedown: aborting before the load phases (strict preconditions failed)" >&2
+    exit 3
+  fi
+fi
+
 # Run race + SSD benchmarks while the chassis is still cold. Cold race captures
 # peak boost throughput unobscured by thermal saturation. SSD numbers are
 # similarly cleaner before NVMe controllers warm up under chassis heat soak.
@@ -495,6 +547,12 @@ if load_avg_1m is not None and n_perf and load_avg_1m > n_perf * 0.5:
 if not ac_power:
     preflight_verdict = "warn"
     preflight_reasons.append("not on AC power, sustained-perf tests assume AC")
+
+# In strict mode the gate already aborted before the load phases if a precondition
+# failed, so reaching this point means they were met. Record that the run was gated.
+strict_mode = os.environ.get("STRICT") == "1"
+if strict_mode:
+    preflight_reasons.append("strict mode: preconditions gated before the load phases")
 
 chip = inv_summary.get("chip") or ""
 mem_gb = inv_summary.get("memory_gb")
@@ -694,6 +752,7 @@ phases = {
         "top_cpu_consumers": top_lines,
         "ac_power_connected": ac_power,
         "wifi_connected": wifi_on,
+        "strict_mode": strict_mode,
     }, preflight_reasons or ["system quiet"]),
     "1_inventory": phase_block(inv_verdict, 1, {"asserts": inv_asserts}, inv_reasons or ["target asserts matched"]),
     "2_battery": phase_block(bat_verdict, 1, battery_details, bat_reasons),
