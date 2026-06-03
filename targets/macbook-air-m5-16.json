@@ -4,5 +4,6 @@
   "memory_gb": 16,
   "model_must_include": "Air",
   "calibration_dir": "examples/m5-2026",
-  "thermal_chassis_class": "fanless"
+  "thermal_chassis_class": "fanless",
+  "_note": "Fanless M5 Air, memory_gb pinned to 16. Throttles hard by design (no fan), so the thermal phase uses the loosest bands. The M5 generation is where batch performance variance was reported; the variance phase is the headline. See examples/m5-2026/."
 }

@@ -38,6 +38,7 @@ This is what the aggregator groups on for per-SKU baselines.
 | `efficiency_cores` | int | E-cores on Apple Silicon, 0 on Intel |
 | `logical_cpus` | int | Includes hyperthreading on Intel |
 | `memory_gb` | int | rounded |
+| `screen_inches` | int\|null | built-in display size (14 or 16), read from the panel's native resolution; `null` if no built-in display or an unrecognized size. Selects the MacBook Pro thermal sub-class. |
 | `storage_gb` | int | total NVMe capacity (informational) |
 | `macos_version` | string | e.g. `"macOS 16.3 (Tahoe)"` |
 | `kernel_version` | string | e.g. `"Darwin 26.3.0"` |

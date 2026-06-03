@@ -130,19 +130,22 @@ fi
 
 TARGET_FILE=""
 
-# Auto-select a preset when the user gave neither --target nor a CHASSIS_CLASS
-# override: match the detected hardware (chip, memory, model) against the presets
-# in targets/. The preset's match fields are exactly what the machine reports
-# about itself, using the same sources as the inventory asserts (chip_type /
-# cpu_type, hw.memsize), so an auto-selected preset always passes its own asserts.
-# One unambiguous match wins; zero or several leaves TARGET empty and we fall back
-# to chassis auto-detection with asserts skipped, exactly as before. Pass --target
-# to assert an expected SKU or to override the match.
+# Resolve the target preset and chassis class from the detected hardware. When the
+# user gave neither --target nor a CHASSIS_CLASS override, match the machine (chip,
+# memory, model family, and screen size) against the presets in targets/ and use the
+# one that fits; this is the inverse of the inventory asserts and uses the same
+# sources (chip_type / cpu_type, hw.memsize), so an auto-selected preset always
+# passes its own asserts. One unambiguous match wins; zero or several leaves the
+# preset empty. Either way we derive the chassis class so the thermal phase uses the
+# right bands. Screen size (from the built-in display) separates the 14" (looser) and
+# 16" (strict) MacBook Pro thermal sub-classes, because Apple Silicon does not put it
+# in the model identifier. Pass --target to assert an expected SKU or to override.
 if [[ -z "$TARGET" && -z "${CHASSIS_CLASS:-}" ]]; then
-  TARGET=$(python3 - "$REPO_ROOT/targets" <<'PYEOF'
+  _resolved=$(python3 - "$REPO_ROOT/targets" <<'PYEOF'
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -153,18 +156,50 @@ def sysctl(key):
     except Exception:
         return None
 
+def builtin_screen_inches(displays):
+    # Native built-in panel width -> size class: 14"/16" MacBook Pro, Intel 16".
+    # Apple Silicon does not expose screen size in the model identifier, so the
+    # 14"/16" thermal sub-class is read from the panel resolution instead.
+    width_to_inches = {3024: 14, 3456: 16, 3072: 16}
+    for gpu in displays:
+        for nd in gpu.get("spdisplays_ndrvs", []):
+            if nd.get("spdisplays_connection_type") != "spdisplays_internal":
+                continue
+            for field in ("spdisplays_pixelresolution", "_spdisplays_pixels"):
+                m = re.search(r"(\d{3,4})\s*x\s*\d{3,4}", str(nd.get(field, "")))
+                if m and int(m.group(1)) in width_to_inches:
+                    return width_to_inches[int(m.group(1))]
+    return None
+
 try:
     sp = json.loads(subprocess.check_output(
-        ["system_profiler", "-json", "SPHardwareDataType"],
+        ["system_profiler", "-json", "SPHardwareDataType", "SPDisplaysDataType"],
         stderr=subprocess.DEVNULL))
     hw = sp["SPHardwareDataType"][0]
 except Exception:
-    sys.exit(0)  # no detection -> no auto-target, fall back
+    print("\t")  # no detection: empty preset + empty chassis, caller errors out
+    sys.exit(0)
 
 chip = hw.get("chip_type") or hw.get("cpu_type") or ""
-model = " ".join(filter(None, [hw.get("machine_model"), hw.get("machine_name")]))
+haystack = " ".join(filter(None, [hw.get("machine_model"), hw.get("machine_name")]))
+is_apple_silicon = bool(hw.get("chip_type"))
+is_laptop = "MacBook" in haystack
+is_air = "Air" in haystack
+screen = builtin_screen_inches(sp.get("SPDisplaysDataType", []))
 memraw = sysctl("hw.memsize")
 mem_gb = round(int(memraw) / (1024 ** 3)) if memraw and memraw.isdigit() else None
+
+if is_apple_silicon:
+    if is_laptop and is_air:
+        chassis = "fanless"
+    elif is_laptop:
+        chassis = ("active-cooled-pro-14" if screen == 14 else
+                   "active-cooled-pro-16" if screen == 16 else
+                   "active-cooled-pro")
+    else:
+        chassis = "desktop"
+else:
+    chassis = "intel-laptop" if is_laptop else "intel-desktop"
 
 matches = []
 for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.json"))):
@@ -179,14 +214,21 @@ for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.json"))):
     if t.get("memory_gb") is not None and t["memory_gb"] != mem_gb:
         continue
     mmi = t.get("model_must_include")
-    if mmi and mmi not in model:
+    if mmi and mmi not in haystack:
+        continue
+    si = t.get("screen_inches")
+    # Screen gates only when the preset declares it AND we could read the panel,
+    # so a unique-chip preset still matches when the display is unreadable.
+    if si is not None and screen is not None and si != screen:
         continue
     matches.append(os.path.splitext(os.path.basename(path))[0])
 
-if len(matches) == 1:
-    print(matches[0])
+target = matches[0] if len(matches) == 1 else ""
+print(f"{target}\t{chassis}")
 PYEOF
 )
+  TARGET="${_resolved%%$'\t'*}"
+  _auto_chassis="${_resolved#*$'\t'}"
   [[ -n "$TARGET" ]] && echo "shakedown: auto-selected target '$TARGET' from detected hardware (pass --target to override)" >&2
 fi
 
@@ -205,40 +247,16 @@ print(d.get("thermal_chassis_class", "active-cooled-pro"))
 PYEOF
 )
 elif [[ -z "${CHASSIS_CLASS:-}" ]]; then
-  # No target and no override, auto-detect chassis from machine_name.
-  # Mac Pro (Intel desktop) and MacBook Pro both contain "Pro"; check for
-  # the MacBook prefix first so Mac Pro doesn't get misclassified as a laptop.
-  CHASSIS_CLASS=$(python3 <<'PYEOF'
-import json
-import subprocess
-import sys
-try:
-    sp = json.loads(subprocess.check_output(
-        ["system_profiler", "-json", "SPHardwareDataType"],
-        stderr=subprocess.DEVNULL,
-    ))
-    hw = sp["SPHardwareDataType"][0]
-except Exception:
-    sys.exit(1)
-model = hw.get("machine_name") or ""
-is_apple_silicon = bool(hw.get("chip_type"))
-is_laptop = "MacBook" in model
-# Auto-detect cannot tell a 14" from a 16" MacBook Pro (system_profiler does not
-# expose screen size on Apple Silicon), so it returns the generic active-cooled-pro
-# (16"-equivalent, strict). Pass --target mbp-14-... for the looser
-# active-cooled-pro-14 bands on a 14" that throttles by design.
-if is_apple_silicon:
-    print("fanless" if (is_laptop and "Air" in model) else
-          "active-cooled-pro" if is_laptop else "desktop")
-else:
-    print("intel-laptop" if is_laptop else "intel-desktop")
-PYEOF
-) || {
+  # No preset matched and no override: use the chassis class derived from the
+  # detected hardware above (screen size picks the 14"/16" MacBook Pro sub-class;
+  # an unreadable panel leaves the generic active-cooled-pro, the strict default).
+  CHASSIS_CLASS="${_auto_chassis:-}"
+  if [[ -z "$CHASSIS_CLASS" ]]; then
     echo "run-shakedown.sh: could not auto-detect chassis class." >&2
     echo "  Set CHASSIS_CLASS env var explicitly:" >&2
     echo "  fanless | active-cooled-pro | desktop | intel-laptop | intel-desktop" >&2
     exit 2
-  }
+  fi
 fi
 export CHASSIS_CLASS
 
@@ -622,6 +640,7 @@ mem_gb = inv_summary.get("memory_gb")
 # Search across model + model_identifier, the size suffix shows up in either
 # field depending on generation (Intel "MacBookPro16,1" vs Apple Silicon "Mac17,1").
 model_haystack = " ".join(filter(None, [inv_summary.get("model"), inv_summary.get("model_identifier")]))
+detected_screen = inv_summary.get("screen_inches")
 
 ssd_smart = None
 for s in inventory.get("storage", []) or []:
@@ -638,6 +657,7 @@ if target:
         "chip_pattern_matched": bool(target.get("chip_pattern") and target["chip_pattern"] in chip),
         "memory_gb_matched": (target.get("memory_gb") is None) or (target.get("memory_gb") == mem_gb),
         "model_must_include_matched": bool(target.get("model_must_include") and target["model_must_include"] in model_haystack),
+        "screen_inches_matched": (target.get("screen_inches") is None) or (detected_screen is None) or (target.get("screen_inches") == detected_screen),
     }
     if ssd_smart:
         inv_asserts["ssd_smart"] = ssd_smart
@@ -651,8 +671,14 @@ if target:
         if inv_verdict == "pass":
             inv_verdict = "warn"
         inv_reasons.append(
-            f"model '{model_haystack}' does not include target substring '{target.get('model_must_include')}'. "
-            f"system_profiler does not reliably expose screen size on Apple Silicon; verify manually"
+            f"model '{model_haystack}' does not include target substring '{target.get('model_must_include')}'"
+        )
+    if not inv_asserts["screen_inches_matched"]:
+        if inv_verdict == "pass":
+            inv_verdict = "warn"
+        inv_reasons.append(
+            f"built-in display reads as {detected_screen}-inch but target expects "
+            f"{target.get('screen_inches')}-inch"
         )
 else:
     inv_asserts = {"ran_without_target": True, "ssd_smart": ssd_smart}
@@ -800,6 +826,7 @@ unit_block = {
     "efficiency_cores": inv_summary.get("efficiency_cores"),
     "logical_cpus": inv_summary.get("logical_cpus"),
     "memory_gb": inv_summary.get("memory_gb"),
+    "screen_inches": inv_summary.get("screen_inches"),
     "storage_gb": storage_gb,
     "macos_version": inv_summary.get("macos_version"),
     "kernel_version": inv_summary.get("kernel_version"),

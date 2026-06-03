@@ -2,7 +2,9 @@
   "name": "MacBook Pro 16-inch, M5 Max, 64 GB",
   "chip_pattern": "M5 Max",
   "memory_gb": 64,
-  "model_must_include": "16",
+  "model_must_include": "MacBook Pro",
+  "screen_inches": 16,
   "calibration_dir": "examples/m5-2026",
-  "thermal_chassis_class": "active-cooled-pro-16"
+  "thermal_chassis_class": "active-cooled-pro-16",
+  "_note": "Flagship 16-inch M5 Max, memory_gb pinned to 64; clone and adjust for other configs. The M5 generation is where batch performance variance was reported (a unit that benchmarks fine once then craters on a repeat under heat), so the variance and thermal phases carry the weight. See examples/m5-2026/."
 }

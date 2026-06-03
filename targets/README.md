@@ -1,15 +1,15 @@
 # Target presets
 
-Each `*.json` in this folder is a preset spec for a specific Mac SKU. Pass it to `./run` to assert the unit matches:
+Each `*.json` in this folder is a preset spec for a specific Mac SKU. `./run` auto-selects the matching preset from the detected hardware (chip, memory, model family, and screen size), so you normally don't pass one. Use `--target <name>` to assert an expected SKU or to override the match:
 
 ```bash
 ./run --target mbp-16-m5-max-64
 ```
 
-`./run` loads the JSON, asserts chip / memory / model substrings against the unit, and references the preset's `calibration_dir` for known issues.
+`./run` loads the JSON, asserts chip / memory / model / screen size against the unit, and references the preset's `calibration_dir` for known issues.
 
-If your config isn't here, either:
-- Run without `--target`: chassis class auto-detects, the SKU asserts are skipped, the variance / thermal / battery checks still run, or
+If your config isn't here:
+- Just run `./run`: if no preset matches, chassis class still auto-detects (including the 14" vs 16" sub-class), the SKU asserts are skipped, and the variance / thermal / battery checks still run, or
 - Add a new preset (see [CONTRIBUTING.md](../CONTRIBUTING.md#adding-a-target-preset))
 
 ## Schema
@@ -19,11 +19,14 @@ If your config isn't here, either:
   "name": "MacBook Pro 16-inch, M5 Max, 64 GB",
   "chip_pattern": "M5 Max",
   "memory_gb": 64,
-  "model_must_include": "16",
+  "model_must_include": "MacBook Pro",
+  "screen_inches": 16,
   "calibration_dir": "examples/m5-2026",
-  "thermal_chassis_class": "active-cooled-pro"
+  "thermal_chassis_class": "active-cooled-pro-16"
 }
 ```
+
+`memory_gb` and `screen_inches` may be `null` (or omitted) to skip that assert, which is what the generation-representative presets do. `screen_inches` (14 or 16) is read from the built-in display and both selects the MacBook Pro thermal sub-class and asserts the size; `model_must_include` is matched against the model name plus identifier (`"MacBook Pro"`, `"Air"`, `"Mac mini"`).
 
 `thermal_chassis_class` values:
 
@@ -37,7 +40,7 @@ If your config isn't here, either:
 | `intel-laptop` | Intel MacBook Pro / Air | Throttles hard, pre-Apple-Silicon thermals are aggressive |
 | `intel-desktop` | Intel iMac / Mac mini | Decent headroom but tighter than Apple Silicon desktop |
 
-Auto-detect (no `--target`) can't tell a 14" from a 16" (`system_profiler` doesn't expose screen size on Apple Silicon), so it uses the generic `active-cooled-pro`. Pass `--target mbp-14-...` on a 14" so its design throttling isn't read as a defect.
+Auto-detect (no `--target`) reads screen size from the built-in display panel, so it picks the right 14" vs 16" MacBook Pro sub-class even though Apple Silicon doesn't expose screen size in the model identifier. If the panel can't be read (headless / external display only), it falls back to the generic `active-cooled-pro` (16"-equivalent, strict); pass `--target mbp-14-...` to force the looser 14" bands.
 
 ## Generation coverage
 

@@ -1,0 +1,9 @@
+{
+  "name": "MacBook Air, M4, 16/24/32 GB",
+  "chip_pattern": "Apple M4",
+  "memory_gb": null,
+  "model_must_include": "Air",
+  "calibration_dir": "examples/m4-2024",
+  "thermal_chassis_class": "fanless",
+  "_note": "Generation-representative fanless M4 Air (13in or 15in). memory_gb is null (16/24/32 GB); clone and pin it for a hard assert. See examples/m4-2024/."
+}

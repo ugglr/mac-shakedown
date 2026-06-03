@@ -76,25 +76,19 @@ Phases 10 (race), 11 (SSD), and 12 (memory bandwidth) run before the heavy phase
 
 Two ways:
 
-1. **Use a preset.** `targets/*.json` has presets for common SKUs:
-	- [`mbp-16-m5-max-64`](targets/mbp-16-m5-max-64.json)
-	- [`mbp-14-m5-pro-24`](targets/mbp-14-m5-pro-24.json)
-	- [`macbook-air-m5-16`](targets/macbook-air-m5-16.json)
-	- [`mbp-16-intel-2019`](targets/mbp-16-intel-2019.json)
-
-	```bash
-	./run --target mbp-16-m5-max-64
-	```
-
-	Hard-fails if the chip / RAM don't match the preset. Useful when verifying you got the SKU you paid for.
-
-2. **No target (the usual way).** Auto-selects the matching preset from the detected hardware, so the right thresholds, asserts, and baseline apply with nothing to type:
+1. **No target (the usual way).** Auto-selects the matching preset from the detected hardware (chip, memory, model family, and screen size), so the right thresholds, asserts, and baseline apply with nothing to type:
 
 	```bash
 	./run
 	```
 
-	If exactly one preset matches your chip / memory / model it is used (and printed); if none match, it falls back to auto-detecting chassis class and skipping the SKU asserts, fine for Macs that don't have a preset yet.
+	If exactly one preset matches it is used (and printed); if none match, it falls back to auto-detecting chassis class, including the 14"/16" sub-class from the built-in display, and skips the SKU asserts. `targets/` ships presets across the M1-M5 generations (Air, 14"/16" Pro/Max) plus Intel; see [`targets/README.md`](targets/README.md).
+
+2. **Pin a preset.** Pass `--target` to assert an expected SKU (hard-fails on a chip / RAM mismatch, useful when verifying you got the SKU you paid for) or to override the auto-match:
+
+	```bash
+	./run --target mbp-16-m5-max-64
+	```
 
 (Don't see your SKU? `targets/README.md` has the schema. Open a PR adding a preset.)
 

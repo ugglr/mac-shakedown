@@ -2,8 +2,9 @@
   "name": "MacBook Pro 14-inch, M3 Pro",
   "chip_pattern": "M3 Pro",
   "memory_gb": null,
-  "model_must_include": "14",
+  "model_must_include": "MacBook Pro",
+  "screen_inches": 14,
   "calibration_dir": "examples/m3-2023",
   "thermal_chassis_class": "active-cooled-pro-14",
-  "_note": "Generation-representative preset for the 14-inch M3 Pro. memory_gb is null; pin it for a hard assert. system_profiler does not reliably expose screen size on Apple Silicon, so model_must_include '14' is a soft warn. The M3 generation was largely clean; most calibration value is context (the 8 GB base RAM and M3 Pro's 150 GB/s memory bandwidth are spec choices, not defects). See examples/m3-2023/."
+  "_note": "Generation-representative preset for the 14-inch M3 Pro. memory_gb is null; pin it for a hard assert. Screen size comes from the built-in display (a 3024-wide panel reads as 14-inch), so the sub-class matches even though Apple Silicon does not put screen size in the model identifier. The M3 generation was largely clean; most calibration value is context (the 8 GB base RAM and M3 Pro's 150 GB/s memory bandwidth are spec choices, not defects). See examples/m3-2023/."
 }
