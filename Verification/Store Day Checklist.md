@@ -20,11 +20,11 @@ Apple's QA catches the obvious build stuff (speakers, keys, screen). What it has
 xcode-select --install
 git clone https://github.com/ugglr/mac-shakedown ~/mac-shakedown
 cd ~/mac-shakedown
-./run --target mbp-16-m5-max-64 --store
+./run --store
 ```
 
 - `xcode-select --install` is a one-time GUI dialog (~10 min); the rest is one paste.
-- Swap `mbp-16-m5-max-64` for your SKU (see `targets/`), or drop `--target` to auto-detect.
+- No SKU to type: `./run` auto-selects the matching preset from the machine's own hardware (it prints which one). Add `--target <name>` (see `targets/`) only if you want to assert an expected SKU or force a specific preset.
 - Enter your login password when it asks for sudo (the thermal phase needs it).
 - `--store` is the thorough profile: ~45 min of CPU variance (accelerated **and** non-accelerated), a 10-minute sustained thermal load, the memory triad, and the GPU pass. It takes over; walk around while it runs.
 - Want the exact workload the M5 defect was reported on? Add `--llama` (it builds llama.cpp and runs an LLM load; extra time).

@@ -130,7 +130,7 @@ Cheapest and most decisive reads first, then one quick baseline, then a fast cos
 
 The 15-20 min store window cannot run a sustained loop. Do it that night, on AC, on a hard flat surface in a cool room.
 
-1. **Harness, thorough profile:** `SHAKEDOWN_YES=1 ./run --target mbp-16-m5-max-64 --store`. Both CPU workloads (including the non-accelerated BLAKE2b that matches where the defect was reported), the GPU pass, a long warmup, and 8 iterations. Rerun any single WARN.
+1. **Harness, thorough profile:** `SHAKEDOWN_YES=1 ./run --store` (it auto-selects the preset for your hardware; add `--target <name>` to pin one). Both CPU workloads (including the non-accelerated BLAKE2b that matches where the defect was reported), the GPU pass, a long warmup, and 8 iterations. Rerun any single WARN.
 2. **Sustained Cinebench loop:** Cinebench 2024 multi-core back to back for ~30-45 min (or its minimum-test-duration mode). Record EACH run's score. A healthy unit settles to a stable sustained score; a defective one keeps sagging run-over-run. Infant-mortality and batch-variance defects often pass a cold first run and only show by the 3rd-4th run under heat.
 3. **Second workload:** re-run Geekbench 6 (CPU and Metal) a few times against the live Geekbench Browser average for your exact model.
 4. **Compare against a sibling** if you captured one: `./Verification/scripts/compare-reports.sh sibling.json yours.json`.
