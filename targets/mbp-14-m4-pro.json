@@ -1,0 +1,10 @@
+{
+  "name": "MacBook Pro 14-inch, M4 Pro",
+  "chip_pattern": "M4 Pro",
+  "memory_gb": null,
+  "model_must_include": "MacBook Pro",
+  "screen_inches": 14,
+  "calibration_dir": "examples/m4-2024",
+  "thermal_chassis_class": "active-cooled-pro-14",
+  "_note": "Generation-representative 14-inch M4 Pro (2024). Screen size comes from the built-in panel. memory_gb is null; clone and pin it for a hard assert. A 16-inch M4 Pro has no preset and falls back to the (correct) auto-detected chassis. See examples/m4-2024/."
+}

@@ -1,0 +1,10 @@
+{
+  "name": "MacBook Pro 16-inch, M2 Max",
+  "chip_pattern": "M2 Max",
+  "memory_gb": null,
+  "model_must_include": "MacBook Pro",
+  "screen_inches": 16,
+  "calibration_dir": "examples/m2-2022",
+  "thermal_chassis_class": "active-cooled-pro-16",
+  "_note": "Generation-representative 16-inch M2 Max (2023). Screen size comes from the built-in panel. memory_gb is null; clone and pin it for a hard assert. A 14-inch M2 Max has no preset and falls back to the (correct) auto-detected chassis. See examples/m2-2022/."
+}

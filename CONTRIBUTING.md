@@ -16,18 +16,20 @@ A target preset lets users run `./run --target <name>` to assert the unit matche
   "name": "MacBook Pro 16-inch, M5 Max, 64 GB",
   "chip_pattern": "M5 Max",
   "memory_gb": 64,
-  "model_must_include": "16",
+  "model_must_include": "MacBook Pro",
+  "screen_inches": 16,
   "calibration_dir": "examples/m5-2026",
-  "thermal_chassis_class": "active-cooled-pro"
+  "thermal_chassis_class": "active-cooled-pro-16"
 }
 ```
 
 | Field | Purpose |
 |---|---|
 | `name` | Human-readable label shown in reports |
-| `chip_pattern` | Substring asserted against `system_profiler`'s `chip_type` |
-| `memory_gb` | Asserted against `sysctl hw.memsize` |
-| `model_must_include` | Substring asserted against `machine_model` (catches chassis size) |
+| `chip_pattern` | Substring asserted against `system_profiler`'s `chip_type` (auto-select keys off this, so keep it specific: `"M5 Max"`, not just `"M5"`) |
+| `memory_gb` | Asserted against `sysctl hw.memsize`; `null` to skip (generation-representative presets) |
+| `model_must_include` | Substring asserted against the model name plus identifier: `"MacBook Pro"`, `"Air"`, `"Mac mini"` |
+| `screen_inches` | `14` or `16`, read from the built-in display; selects the MacBook Pro thermal sub-class and asserts the size. `null` / omit for Airs, desktops, and size-agnostic presets |
 | `calibration_dir` | Path to the `examples/<generation>/` notes for failure-analysis cross-reference |
 | `thermal_chassis_class` | One of `fanless`, `active-cooled-pro` (with `active-cooled-pro-14` / `active-cooled-pro-16` sub-classes for the 14" / 16" MacBook Pro), `desktop`, `intel-laptop`, `intel-desktop`. Sets thermal thresholds and Phase 4 warmup duration. See [`targets/README.md`](targets/README.md) for the per-class definition. |
 

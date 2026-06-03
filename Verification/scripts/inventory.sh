@@ -14,6 +14,7 @@ INCLUDE_PLAINTEXT_SERIAL=${INCLUDE_PLAINTEXT_SERIAL:-0}
 python3 - "$INCLUDE_PLAINTEXT_SERIAL" <<'PYEOF'
 import hashlib
 import json
+import re
 import subprocess
 import sys
 
@@ -57,6 +58,21 @@ def hash_serial(s):
         return None
     return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
 
+def builtin_screen_inches(displays):
+    # Native built-in panel width -> size class: 14"/16" MacBook Pro, Intel 16".
+    # Apple Silicon does not expose screen size in the model identifier, so the
+    # 14"/16" thermal sub-class is read from the panel resolution instead.
+    width_to_inches = {3024: 14, 3456: 16, 3072: 16}
+    for gpu in displays:
+        for nd in gpu.get("spdisplays_ndrvs", []):
+            if nd.get("spdisplays_connection_type") != "spdisplays_internal":
+                continue
+            for field in ("spdisplays_pixelresolution", "_spdisplays_pixels"):
+                m = re.search(r"(\d{3,4})\s*x\s*\d{3,4}", str(nd.get(field, "")))
+                if m and int(m.group(1)) in width_to_inches:
+                    return width_to_inches[int(m.group(1))]
+    return None
+
 raw = {dt: run_sp(dt) for dt in DATATYPES}
 
 def first(d, k):
@@ -86,6 +102,8 @@ summary = {
     "is_apple_silicon": bool(hw.get("chip_type")),
     "physical_memory": hw.get("physical_memory"),
     "memory_gb": memsize_gb,
+    "screen_inches": builtin_screen_inches(
+        raw.get("SPDisplaysDataType", {}).get("SPDisplaysDataType", [])),
     "perf_cores": int(sysctl("hw.perflevel0.physicalcpu") or 0) or None,
     "efficiency_cores": int(sysctl("hw.perflevel1.physicalcpu") or 0) or None,
     "logical_cpus": int(sysctl("hw.ncpu") or 0) or None,

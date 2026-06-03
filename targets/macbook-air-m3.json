@@ -1,0 +1,9 @@
+{
+  "name": "MacBook Air, M3, 8/16/24 GB",
+  "chip_pattern": "Apple M3",
+  "memory_gb": null,
+  "model_must_include": "Air",
+  "calibration_dir": "examples/m3-2023",
+  "thermal_chassis_class": "fanless",
+  "_note": "Generation-representative fanless M3 Air (13in or 15in). memory_gb is null (8/16/24 GB); clone and pin it for a hard assert. The M3 generation was largely clean. See examples/m3-2023/."
+}

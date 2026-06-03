@@ -2,7 +2,8 @@
   "name": "MacBook Pro 16-inch, Intel Core i7/i9 (2019)",
   "chip_pattern": "Intel",
   "memory_gb": null,
-  "model_must_include": "16",
+  "model_must_include": "MacBook Pro",
+  "screen_inches": 16,
   "calibration_dir": "examples/intel-2016",
   "thermal_chassis_class": "intel-laptop",
   "_note": "Memory varies (16/32/64 GB). The preset's memory_gb is null so the memory assert is skipped. Clone this file and pin memory_gb to your specific config (16, 32, or 64) for a hard assert. Points at the Intel / T2-era calibration (examples/intel-2016): butterfly keyboard, Flexgate, T2 audio/panics, 2018 i9 thermal throttling, 2019 13in shutdowns, Radeon GPU artifacts, Staingate, and the 2015 battery recall."
