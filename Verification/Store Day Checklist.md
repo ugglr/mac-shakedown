@@ -20,14 +20,15 @@ Apple's QA catches the obvious build stuff (speakers, keys, screen). What it has
 xcode-select --install
 git clone https://github.com/ugglr/mac-shakedown ~/mac-shakedown
 cd ~/mac-shakedown
-./run --store
+./run
 ```
 
 - `xcode-select --install` is a one-time GUI dialog (~10 min); the rest is one paste.
-- No SKU to type: `./run` auto-selects the matching preset from the machine's own hardware (it prints which one). Add `--target <name>` (see `targets/`) only if you want to assert an expected SKU or force a specific preset.
+- `./run` asks a couple of questions. Pick **1) Verify a new Mac**. It detects the SKU itself (no flags to type) and builds the thorough run for you. (Same as `./run --store` if you'd rather type it.)
+- Say **yes** to "refuse to score unless on AC and idle" so a bad-conditions run can't give you a false pass.
 - Enter your login password when it asks for sudo (the thermal phase needs it).
-- `--store` is the thorough profile: ~45 min of CPU variance (accelerated **and** non-accelerated), a 10-minute sustained thermal load, the memory triad, and the GPU pass. It takes over; walk around while it runs.
-- Want the exact workload the M5 defect was reported on? Add `--llama` (it builds llama.cpp and runs an LLM load; extra time).
+- The thorough profile is ~45 min: CPU variance (accelerated **and** non-accelerated), a 10-minute sustained thermal load, the memory triad, and the GPU pass. It takes over; walk around while it runs.
+- Want the exact workload the M5 defect was reported on? Say **yes** to the AI/LLM load (it builds llama.cpp and runs an LLM load; extra time).
 
 ## Read the verdict
 
