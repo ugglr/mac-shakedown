@@ -9,7 +9,7 @@ Every QA run produces two artifacts in `Reports/`:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `schema_version` | string | yes | Semver of the schema. Currently `"1.3"`. |
+| `schema_version` | string | yes | Semver of the schema. Currently `"1.4"`. |
 | `shakedown_version` | string | yes | Tool version that produced the report (e.g. `"0.1.0"`). |
 | `timestamp` | string | yes | ISO 8601 UTC. |
 | `illustrative` | bool | no | `true` for hand-crafted samples (under `examples/sample-report-*`). Aggregator must filter these out. |
@@ -19,6 +19,7 @@ Every QA run produces two artifacts in `Reports/`:
 | `phases` | object | yes | One key per phase (see Phase shape). |
 | `result` | string | yes | `"PASS"` / `"FAIL"`. |
 | `result_reason` | string | yes | One-line summary. |
+| `baseline_check` | object\|null | no | The calibrated golden-limit binning (see below). Non-null only when a `baselines/<preset>.json` exists for the target; `null` otherwise. |
 | `submission_safe` | bool | yes | Orchestrator's assertion that no PII is present. |
 | `store_location` | string\|null | no | Opt-in only. |
 | `purchase_date` | string\|null | no | Opt-in only. |
@@ -347,6 +348,25 @@ The hash is genuinely useful for **deduplication**: the aggregator can detect re
 
 A future hosted aggregator should rotate to HMAC-SHA-256 with a per-deployment secret, so the aggregator-side dedup works but external attackers can't recover the serial. Until that lands, the threat model is: aggregator operator can recover serials; everyone else can't.
 
+## Calibrated baseline check (`baseline_check`)
+
+Present (non-null) only when `baselines/<preset>.json` exists for the `--target` SKU. It is the production-QA-style binning of this unit's metrics against golden control limits derived from known-good units (see [Production QA](../Verification/Production%20QA.md) and `Verification/scripts/make-baseline.sh`). When present, a metric outside its limit escalates `result` to `FAIL`, turning the verdict from advisory (within-unit only) into calibrated.
+
+```json
+"baseline_check": {
+  "baseline_preset": "mbp-16-m5-max-64",
+  "n_samples": 12,
+  "verdict": "pass",
+  "checks": [
+    {"metric": "4_cpu_variance.mean_mb_per_s", "value": 23110.5, "golden": 23089.0, "min": 21934.6, "pass": true},
+    {"metric": "12_memory_bandwidth.mean_triad_gb_per_s", "value": 402.1, "golden": 404.0, "min": 383.8, "pass": true},
+    {"metric": "5_thermal_load.cpu_die_temp_c.max", "value": 96.4, "golden": 94.8, "max": 101.2, "pass": true}
+  ]
+}
+```
+
+Each check carries the measured `value`, the `golden` reference, and either a `min` (higher-is-better metrics) or a `max` (lower-is-better), plus `pass`. `verdict` is `fail` if any check fails. `baseline_check` is `null` (and the verdict stays within-unit advisory) when no baseline exists for the SKU, so reports without a baseline omit the binning and remain valid.
+
 ## Versioning policy
 
 - **Patch bumps (1.0.0 → 1.0.1)** add optional fields. Old aggregators read the new reports fine.
@@ -361,3 +381,4 @@ If a test methodology changes (e.g. variance test gains a new metric, or thresho
 - **1.1** → added phases 10_race_bench and 11_ssd_test (informational; pass/fail thresholds pending v0.3 calibration corpus). Backward compatible: reports without these phases still validate as 1.0 shape.
 - **1.2** → added phases 12_memory_bandwidth (informational), 4b_cpu_variance_noaccel (opt-in non-accelerated variance, real pass/warn/fail when run), and 13_gpu_variance (opt-in Metal compute, informational). Added a conservative warn-only floor to 11_ssd_test (`ssd_floor_mb_per_s`) and split the `active-cooled-pro` thermal class into `active-cooled-pro-14` / `active-cooled-pro-16` (the bare class stays valid as the 16"-equivalent, so older reports and presets still compare). Backward compatible: 4b and 13 are `skipped` placeholders unless opted in.
 - **1.3** → Phase 12 now prefers a vendored STREAM triad (`details.method` is `stream-triad` or the `memmove-proxy` fallback; new `*_triad_gb_per_s` / `mean_scale_gb_per_s` / `mean_add_gb_per_s` fields). Added phase 14_llama_bench (opt-in `--llama`: clones/builds llama.cpp and runs llama-bench, a combined CPU+GPU+memory load; informational, `skipped` unless opted in). Backward compatible: both phase-12 methods keep `mean_copy_gb_per_s`, and 14 is a `skipped` placeholder by default.
+- **1.4** → added the optional top-level `baseline_check` object: when `baselines/<preset>.json` exists for the target, the run bins each metric against a golden control limit and a metric outside its limit escalates `result` to FAIL (a calibrated verdict instead of within-unit advisory). Added `make-baseline.sh` (builds a baseline from known-good reports) and the `baselines/` directory. Backward compatible: `baseline_check` is `null` and the verdict stays advisory when no baseline exists, so it is not a required field.

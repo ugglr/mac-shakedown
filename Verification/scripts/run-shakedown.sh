@@ -446,7 +446,7 @@ import sys
  local_dir, submissions_dir, target_name, notes) = sys.argv[1:17]
 
 SHAKEDOWN_VERSION = "0.1.0"
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "1.4"
 
 def load(path):
     with open(path) as f:
@@ -723,6 +723,47 @@ else:
     result = "PASS"
     result_reason = "all phases passed; no defect signatures detected"
 
+# Calibrated baseline check (production-QA style). When baselines/<preset>.json
+# exists for this target, bin each metric against its golden control limit; a
+# metric outside its limit escalates the overall result to FAIL. Absent a
+# baseline the verdict stays within-unit-only (advisory). See Production QA.md.
+baseline_check = None
+if target_name:
+    repo_root = os.path.dirname(os.path.dirname(local_dir))
+    baseline_path = os.path.join(repo_root, "baselines", target_name + ".json")
+    if os.path.exists(baseline_path):
+        with open(baseline_path) as bf:
+            baseline = json.load(bf)
+        checks = []
+        for key, spec in (baseline.get("metrics") or {}).items():
+            pk, _, mpath = key.partition(".")
+            node = phases.get(pk, {}).get("details", {})
+            for part in mpath.split("."):
+                node = node.get(part) if isinstance(node, dict) else None
+            if not isinstance(node, (int, float)):
+                continue
+            higher = spec.get("higher_better", True)
+            entry = {"metric": key, "value": node, "golden": spec.get("golden"), "pass": True}
+            if higher and spec.get("min") is not None:
+                entry["min"] = spec["min"]
+                entry["pass"] = node >= spec["min"]
+            elif (not higher) and spec.get("max") is not None:
+                entry["max"] = spec["max"]
+                entry["pass"] = node <= spec["max"]
+            checks.append(entry)
+        failed = [c for c in checks if not c["pass"]]
+        baseline_check = {
+            "baseline_preset": baseline.get("preset"),
+            "n_samples": baseline.get("n_samples"),
+            "checks": checks,
+            "verdict": "fail" if failed else "pass",
+        }
+        if failed:
+            reason = "below golden baseline: " + ", ".join(
+                f"{c['metric']} {c['value']} vs golden {c.get('golden')}" for c in failed)
+            result_reason = (result_reason + "; " + reason) if result == "FAIL" else reason
+            result = "FAIL"
+
 if target:
     target_block = {"preset": target_name}
     target_block.update({k: v for k, v in target.items() if not k.startswith("_")})
@@ -742,6 +783,7 @@ report_full = {
     "phases": phases,
     "result": result,
     "result_reason": result_reason,
+    "baseline_check": baseline_check,
     "submission_safe": True,
     "store_location": None,
     "purchase_date": None,
@@ -793,17 +835,36 @@ print(json.dumps({
     "submission_path": submission_path,
     "submission_safe": report_sub["submission_safe"],
 }, indent=2))
+
+# Human-readable verdict banner to stderr, printed last so it is the final
+# thing on screen: the "by the end I know" payoff.
+_tty = sys.stderr.isatty()
+_c = ("\033[1;32m" if result == "PASS" else "\033[1;31m") if _tty else ""
+_d = "\033[2m" if _tty else ""
+_x = "\033[0m" if _tty else ""
+_bar = "=" * 66
+print(f"\n{_c}{_bar}", file=sys.stderr)
+print(f"  SHAKEDOWN VERDICT: {result}", file=sys.stderr)
+print(f"{_bar}{_x}", file=sys.stderr)
+print(f"  {result_reason}", file=sys.stderr)
+if baseline_check is not None:
+    _ck = baseline_check.get("checks") or []
+    _within = sum(1 for c in _ck if c.get("pass"))
+    print(f"{_d}  Binned against the golden baseline for {baseline_check.get('baseline_preset')} "
+          f"({baseline_check.get('n_samples')} known-good samples):{_x}", file=sys.stderr)
+    print(f"{_d}  {_within}/{len(_ck)} metrics within their golden limits. This is a calibrated"
+          f" verdict.{_x}", file=sys.stderr)
+else:
+    if result == "PASS":
+        print(f"{_d}  No batch performance-defect signature: CPU variance, thermal, memory,{_x}",
+              file=sys.stderr)
+        print(f"{_d}  and GPU all within range (the defect class Apple QA has been missing).{_x}",
+              file=sys.stderr)
+    print(f"{_d}  No golden baseline for this SKU yet, so this verdict is within-unit only",
+          file=sys.stderr)
+    print(f"  (advisory). For a calibrated verdict, build one from known-good units with",
+          file=sys.stderr)
+    print(f"  make-baseline.sh, or compare against one with compare-reports.sh.{_x}", file=sys.stderr)
+print(f"{_d}  Report saved: {submission_path}{_x}", file=sys.stderr)
+print(f"{_c}{_bar}{_x}\n", file=sys.stderr)
 PYEOF
-
-cat <<INFO >&2
-
-shakedown: done.
-
-Next steps:
-  1. Review the submission JSON for any leftover PII:
-     cat Reports/submissions/<filename>
-  2. If you ran the manual phases (display / physical / Apple Diagnostics),
-     hand-edit the local file then copy a sanitized version to submissions/.
-  3. Open a PR adding the submission JSON to help calibrate v0.1 thresholds.
-     See CONTRIBUTING.md for the submission flow.
-INFO

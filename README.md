@@ -41,7 +41,7 @@ Or without a preset, which auto-detects chassis class from `system_profiler` (fi
 
 The orchestrator runs the automated phases (preflight → inventory → battery → race benchmark → SSD test → memory bandwidth → CPU variance → thermal load) end-to-end, asks for sudo once upfront (Phase 5 and the SSD page-cache drop need it), and writes a SCHEMA-compliant report to `Reports/local/` plus a sanitized PR-able copy to `Reports/submissions/`. Opt-in flags add heavier passes: `--noaccel` (a non-accelerated BLAKE2b variance pass), `--gpu` (a Metal GPU compute pass), and `--llama` (clones and builds llama.cpp for a combined CPU+GPU+memory AI load). `--store` bundles the thorough profile for verifying a new unit. Runtime ~20 min on Intel, ~27 min on Air, ~47 min on MacBook Pro.
 
-> Verifying a new purchase, especially in a store you can't easily return to? The [Benchmark Reference](Verification/Benchmark%20Reference.md) is the install-this / run-this / expected-score guide (sourced per-generation Cinebench + Geekbench baselines, the in-store and hotel protocols, and crowd-sourced live-lookup links). To diff your unit against a known-good sibling, run `Verification/scripts/compare-reports.sh reference.json yours.json`.
+> Verifying a new purchase, especially in a store you can't easily return to? Follow the [Store Day Checklist](Verification/Store%20Day%20Checklist.md), a top-to-bottom run-this-then-that guide for verifying your machine in one sitting at the store. The [Benchmark Reference](Verification/Benchmark%20Reference.md) behind it has the sourced per-generation expected scores and live-lookup links, and `Verification/scripts/compare-reports.sh reference.json yours.json` diffs your unit against a known-good sibling.
 
 `./run --no-sudo` skips the 10-min thermal phase (the only phase that needs sudo) for a half-runtime no-password variance-only pass.
 
@@ -118,6 +118,8 @@ mac-shakedown/
 │   ├── Runbook.md                  # the procedure
 │   ├── Pass-Fail Criteria.md       # thresholds (parameterized by chassis class)
 │   ├── Benchmark Reference.md      # install/run/expected-score + in-store protocol
+│   ├── Store Day Checklist.md      # the one-command in-store flow
+│   ├── Production QA.md            # gap analysis: toward factory-grade QA
 │   ├── per-core-pinning.md         # why macOS has no per-core affinity (methodology note)
 │   └── scripts/
 │       ├── run-shakedown.sh        # the orchestrator (`./run` execs this)
@@ -132,7 +134,9 @@ mac-shakedown/
 │       ├── gpu-variance.sh         # opt-in Metal compute variance, swiftc at runtime → JSON
 │       ├── llama-bench.sh          # opt-in llama.cpp combined load (clone+build) → JSON
 │       ├── compare-reports.sh      # diff two reports (unit vs known-good sibling)
+│       ├── make-baseline.sh        # build baselines/<preset>.json from known-good reports
 │       └── display-test.sh         # fullscreen color cycle (HTML)
+├── baselines/                      # calibrated golden limits per SKU (mostly empty; built from known-good runs)
 ├── targets/                        # preset SKU configs
 │   ├── README.md
 │   ├── mbp-16-m5-max-64.json
@@ -190,10 +194,12 @@ Wave 7 shipped most of the original roadmap: the non-accelerated variance pass (
 
 Wave 8 added the in-store toolkit: the `--store` thorough profile, `compare-reports.sh` (diff your unit against a known-good sibling), a sourced [Benchmark Reference](Verification/Benchmark%20Reference.md), a vendored STREAM triad in Phase 12 (real copy / scale / add / triad), and an opt-in `--llama` phase that builds llama.cpp for a combined CPU+GPU+memory load.
 
+Since then: a one-command verdict banner on `./run`, a single-sitting [Store Day Checklist](Verification/Store%20Day%20Checklist.md), and the first leg of production-grade QA, calibrated golden baselines (`make-baseline.sh` builds `baselines/<preset>.json` from known-good runs; `./run` then bins against it for a calibrated verdict). [`Verification/Production QA.md`](Verification/Production%20QA.md) is the honest gap analysis to a factory-grade screen.
+
 Still open:
 
 - **Hosted aggregator.** Eventually, submission via API to a public site so reports aren't reviewed by hand. Until then, the PR-submission flow above *is* the aggregator. Slower, but no infra, and PR review catches PII before merge.
-- **Calibrated v0.3 thresholds.** The race / SSD / memory-bandwidth / GPU phases are informational in v0.2. Once the submission corpus has per-SKU baselines, they get chassis-family pass/fail bands. The SSD floor is the only band today, and it's a conservative sanity floor (flags below 500 MB/s with the cache dropped), not a calibrated range.
+- **A corpus to calibrate against.** The mechanism now exists: `./run` bins against a golden baseline when `baselines/<preset>.json` is present (`make-baseline.sh` builds one from known-good reports), turning the verdict calibrated. What is still missing is the population of known-good units to characterize, plus a Measurement System Analysis (is our gage error small vs the tolerance?) and gated preconditions. [`Verification/Production QA.md`](Verification/Production%20QA.md) lays out the full path to a production-grade screen.
 - **Per-core pinning.** macOS lacks public CPU affinity APIs, so we can't pin workers to specific cores; a defective single core gets averaged across N P-cores. Reporting `worker_imbalance_pct_per_iter` is the partial mitigation. The investigation is written up in [`Verification/per-core-pinning.md`](Verification/per-core-pinning.md): the short version is that `THREAD_AFFINITY_POLICY` is ignored on Apple Silicon and QoS hints only steer between the P and E clusters, so there's no per-core pinning to be had today.
 
 ## Origin

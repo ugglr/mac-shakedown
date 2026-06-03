@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added: one-command verdict and calibrated baselines (production-QA direction)
+
+- **Verdict banner.** `./run` now ends with a clear `SHAKEDOWN VERDICT: PASS/FAIL` banner (green/red on a TTY) summarizing the performance result, so a run finishes with an unambiguous answer instead of a JSON dump. Performance-focused (the batch-variance / thermal / memory / GPU defect class), not cosmetics.
+- **Calibrated baselines.** `make-baseline.sh` turns N known-good reports into `baselines/<preset>.json` (per-metric golden value plus a 3-sigma control limit, or a tolerance band below 8 samples). When `baselines/<preset>.json` exists for the `--target`, `./run` bins each metric against its golden limit and a metric outside its limit escalates the result to FAIL: the verdict becomes a calibrated pass/fail instead of within-unit advisory, recorded in the new optional `baseline_check` field. Absent a baseline, behavior is unchanged. Schema 1.4.
+- **`Verification/Production QA.md`.** An honest engineering gap analysis between Shakedown today and a factory production-QA station (calibrated limits, golden binning, Measurement System Analysis, gated preconditions, defect coverage / escape rate, SPC), and the architecture to close it. The calibrated-baseline mechanism is the first leg.
+- **Store Day Checklist** reframed to a single in-store flow centered on the one command (`./run --store`) and the verdict banner.
+
 ### Added: in-store verification toolkit (wave 8)
 
 - **`--store` thorough profile.** One flag for verifying a new unit (M5 especially): turns on `--noaccel` and `--gpu` and runs a longer warmup with more iterations, so an intermittent batch defect has more chances to surface. Honors any timing env vars the user set.
@@ -12,6 +19,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - **Phase 12 STREAM triad.** Memory bandwidth now prefers a vendored single-file STREAM triad (`stream-triad.c`: real copy / scale / add / triad), compiled at runtime with clang, no network. Falls back to the pure-Python `memmove` proxy when clang is unavailable. Closes the copy-only-proxy gap; `details.method` records which ran.
 - **Phase 14 `--llama` (opt-in).** Clones and builds llama.cpp at a pinned ref and runs `llama-bench`, a combined CPU+GPU+memory AI load (the workload class the M5 defect was reported on). Off by default; it reaches the network and runs third-party code (disclosed in SECURITY.md) and skips cleanly without git / cmake / network / model.
 - **Schema 1.3.** Phase 12 gains the triad method and `*_triad_gb_per_s` fields; new phase key `14_llama_bench` (a `skipped` placeholder by default), added to the CI submission-audit required-phase list. Backward compatible: both phase-12 methods keep `mean_copy_gb_per_s`, and 14 is skipped unless opted in.
+- **Store Day Checklist** (`Verification/Store Day Checklist.md`). A short, top-to-bottom run-this-then-that guide for verifying a unit at the store and then at the hotel, sitting on top of the Benchmark Reference. Linked first from the README and the Benchmark Reference.
 
 ### Added: roadmap completion (wave 7)
 
