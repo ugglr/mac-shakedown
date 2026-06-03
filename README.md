@@ -135,6 +135,7 @@ mac-shakedown/
 │       ├── llama-bench.sh          # opt-in llama.cpp combined load (clone+build) → JSON
 │       ├── compare-reports.sh      # diff two reports (unit vs known-good sibling)
 │       ├── make-baseline.sh        # build baselines/<preset>.json from known-good reports
+│       ├── repeatability.sh        # MSA: is our gage error small vs the tolerance?
 │       └── display-test.sh         # fullscreen color cycle (HTML)
 ├── baselines/                      # calibrated golden limits per SKU (mostly empty; built from known-good runs)
 ├── targets/                        # preset SKU configs
@@ -199,7 +200,7 @@ Since then: a one-command verdict banner on `./run`, a single-sitting [Store Day
 Still open:
 
 - **Hosted aggregator.** Eventually, submission via API to a public site so reports aren't reviewed by hand. Until then, the PR-submission flow above *is* the aggregator. Slower, but no infra, and PR review catches PII before merge.
-- **A corpus to calibrate against.** The mechanism now exists: `./run` bins against a golden baseline when `baselines/<preset>.json` is present (`make-baseline.sh` builds one from known-good reports), turning the verdict calibrated. What is still missing is the population of known-good units to characterize, plus a Measurement System Analysis (is our gage error small vs the tolerance?) and gated preconditions. [`Verification/Production QA.md`](Verification/Production%20QA.md) lays out the full path to a production-grade screen.
+- **A corpus to calibrate against.** The mechanism now exists: `./run` bins against a golden baseline when `baselines/<preset>.json` is present (`make-baseline.sh` builds one from known-good reports), turning the verdict calibrated. What is still missing is the population of known-good units to characterize. The Measurement System Analysis harness now exists (`repeatability.sh` reports whether our gage error is small relative to the tolerance it decides against); gated preconditions are next. [`Verification/Production QA.md`](Verification/Production%20QA.md) lays out the full path to a production-grade screen.
 - **Per-core pinning.** macOS lacks public CPU affinity APIs, so we can't pin workers to specific cores; a defective single core gets averaged across N P-cores. Reporting `worker_imbalance_pct_per_iter` is the partial mitigation. The investigation is written up in [`Verification/per-core-pinning.md`](Verification/per-core-pinning.md): the short version is that `THREAD_AFFINITY_POLICY` is ignored on Apple Silicon and QoS hints only steer between the P and E clusters, so there's no per-core pinning to be had today.
 
 ## Origin
