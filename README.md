@@ -33,7 +33,9 @@ Shakedown is the procedure for catching those.
 	./run
 	```
 
-`./run` auto-selects the matching preset from your hardware (chip, memory, model), so it bins against the right thresholds and baseline with nothing to type. Pass `--target mbp-16-m5-max-64` (see `targets/`) to assert an expected SKU, or to override the match; if no preset matches, it auto-detects chassis class from `system_profiler` and skips the inventory asserts.
+On a terminal with no flags, `./run` opens a short guided picker (verify a new Mac vs quick check, plus strict and the AI load), builds the command, and runs it, so you don't have to remember flags. Pass any flag (or `SHAKEDOWN_YES=1`, or pipe it) and the picker is skipped, the run proceeds directly.
+
+Either way, `./run` auto-selects the matching preset from your hardware (chip, memory, model, screen size), so it bins against the right thresholds and baseline with nothing to type. Pass `--target mbp-16-m5-max-64` (see `targets/`) to assert an expected SKU, or to override the match; if no preset matches, it auto-detects chassis class from `system_profiler` and skips the inventory asserts.
 
 The orchestrator runs the automated phases (preflight → inventory → battery → race benchmark → SSD test → memory bandwidth → CPU variance → thermal load) end-to-end, asks for sudo once upfront (Phase 5 and the SSD page-cache drop need it), and writes a SCHEMA-compliant report to `Reports/local/` plus a sanitized PR-able copy to `Reports/submissions/`. Opt-in flags add heavier passes: `--noaccel` (a non-accelerated BLAKE2b variance pass), `--gpu` (a Metal GPU compute pass), and `--llama` (clones and builds llama.cpp for a combined CPU+GPU+memory AI load). `--store` bundles the thorough profile for verifying a new unit. Runtime ~20 min on Intel, ~27 min on Air, ~47 min on MacBook Pro.
 

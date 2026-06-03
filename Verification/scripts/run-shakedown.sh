@@ -27,6 +27,7 @@ STORE=0
 RUN_LLAMA=0
 STRICT=0
 
+ARGC=$#
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --target)
@@ -109,6 +110,75 @@ HELP
       ;;
   esac
 done
+
+# Interactive picker: with no flags on a terminal, ask a couple of questions and
+# build the run instead of making the user remember flags. Any explicit flag, a
+# non-interactive stdin (pipe / CI), or SHAKEDOWN_YES=1 skips it, so scripted and
+# flag-driven use is unchanged. Sets the same variables the flags would.
+interactive_picker() {
+  local sku choice ans built
+  sku=$(python3 - <<'PYEOF' 2>/dev/null
+import json
+import subprocess
+try:
+    hw = json.loads(subprocess.check_output(
+        ["system_profiler", "-json", "SPHardwareDataType"],
+        stderr=subprocess.DEVNULL))["SPHardwareDataType"][0]
+    chip = hw.get("chip_type") or hw.get("cpu_type") or "Mac"
+except Exception:
+    chip = "this Mac"
+try:
+    mem = round(int(subprocess.check_output(["sysctl", "-n", "hw.memsize"]).decode()) / (1024 ** 3))
+    print(f"{chip}, {mem} GB")
+except Exception:
+    print(chip)
+PYEOF
+)
+  {
+    echo ""
+    echo "shakedown: detected ${sku:-this Mac}"
+    echo ""
+    echo "  What are you doing?"
+    echo "    1) Verify a new Mac   thorough, ~45 min"
+    echo "    2) Quick check        ~20 min"
+    echo "    3) Custom / show flags"
+  } >&2
+  read -r -p "  > " choice || true
+  case "$choice" in
+    1)
+      STORE=1
+      read -r -p "  Refuse to score unless on AC and idle? [Y/n] " ans || true
+      if [[ ! "$ans" =~ ^[Nn] ]]; then STRICT=1; fi
+      read -r -p "  Also run the AI/LLM load? (builds llama.cpp, needs network, adds time) [y/N] " ans || true
+      if [[ "$ans" =~ ^[Yy] ]]; then RUN_LLAMA=1; fi
+      ;;
+    2)
+      : # default profile, no extra flags
+      ;;
+    3)
+      echo "  Run '$(basename "$0") --help' for all flags, then re-run with the ones you want." >&2
+      exit 0
+      ;;
+    *)
+      echo "  Unrecognized choice; running the quick check." >&2
+      ;;
+  esac
+  built="./run"
+  if [[ "$STORE" -eq 1 ]]; then built+=" --store"; fi
+  if [[ "$STRICT" -eq 1 ]]; then built+=" --strict"; fi
+  if [[ "$RUN_LLAMA" -eq 1 ]]; then built+=" --llama"; fi
+  {
+    echo ""
+    echo "  -> $built"
+    echo "  Starting. Fans will get loud; it asks for your login password once."
+  } >&2
+  # The picker is the confirmation, so skip the second "Proceed?" prompt below.
+  SHAKEDOWN_YES=1
+}
+
+if [[ "$ARGC" -eq 0 && -t 0 && "${SHAKEDOWN_YES:-0}" != "1" ]]; then
+  interactive_picker
+fi
 
 export STRICT
 
